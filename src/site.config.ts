@@ -14,20 +14,20 @@ export const siteConfig: SiteConfig = {
 		},
 	},
 	// Used as the default description meta property and webmanifest description
-	description: "s7ev3n's public space for recording",
+	description: "learnings in public",
 	// HTML lang property, found in src/layouts/Base.astro L:18 & astro.config.ts L:48
 	lang: "en-GB",
 	// Meta property, found in src/components/BaseHead.astro L:42
 	ogLocale: "en_GB",
 	// Option to sort posts by updatedDate if set to true (if property exists). Default (false) will sort by publishDate
-	sortPostsByUpdatedDate: false,
+	sortPostsByUpdatedDate: true,
 	// Used to construct the meta title property found in src/components/BaseHead.astro L:11, and webmanifest name found in astro.config.ts L:42
 	title: "s7ev3n's space",
-	webmentions: {
-		// Webmention.io API endpoint. Get your own here: https://webmention.io/, and follow this blog post: https://astro-cactus.chriswilliams.dev/posts/webmentions/
-		// link: "https://webmention.io/astro-cactus.chriswilliams.dev/webmention",
-		link:""
-	},
+	// webmentions: {
+	// 	Webmention.io API endpoint. Get your own here: https://webmention.io/, and follow this blog post: https://astro-cactus.chriswilliams.dev/posts/webmentions/
+	// 	link: "https://webmention.io/astro-cactus.chriswilliams.dev/webmention",
+	// 	link:""
+	// },
 };
 
 // Used to generate links in both the Header & Footer.
@@ -36,13 +36,17 @@ export const menuLinks: { path: string; title: string }[] = [
 		path: "/",
 		title: "Home",
 	},
-	// {
-	// 	path: "/about/",
-	// 	title: "About",
-	// },
 	{
 		path: "/posts/",
-		title: "Blog",
+		title: "Posts",
+	},
+	{
+		path: "/tags/",
+		title: "Tags",
+	},
+	{
+		path: "/about/",
+		title: "About",
 	},
 ];
 
