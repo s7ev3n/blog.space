@@ -1,17 +1,15 @@
 ---
-import { Image } from "astro:assets";
-import aboutImg from "@/assets/about-astro.png";
 import PageLayout from "@/layouts/Base.astro";
 
 const meta = {
 	description: "I'm s7ev3n.",
-	title: "About Me",
+	title: "About me",
 };
 ---
 
 <PageLayout meta={meta}>
-	<div class="space-y-6">
-		<h1 class="title">About</h1>
+	<h1 class="title mb-6">About</h1>
+	<div class="prose prose-sm prose-cactus max-w-none">
 		<p>Hi, I’m s7ev3n. It is nice to meet you. </p>
 		<p>Here are some bullet points about me:</p>
 		<ul class="list-inside list-disc">
