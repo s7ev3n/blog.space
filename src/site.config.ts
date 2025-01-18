@@ -32,20 +32,20 @@ export const siteConfig: SiteConfig = {
 export const menuLinks: { path: string; title: string }[] = [
 	{
 		path: "/",
-		title: "Home",
+		title: "home",
 	},
 	{
 		path: "/posts/",
-		title: "Posts",
+		title: "posts",
 	},
 	{
 		path: "/tags/",
-		title: "Tags",
+		title: "tags",
 	},
-	{
-		path: "/about/",
-		title: "About",
-	},
+	// {
+	// 	path: "/about/",
+	// 	title: "About",
+	// },
 ];
 
 // https://expressive-code.com/reference/configuration/
