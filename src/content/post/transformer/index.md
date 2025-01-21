@@ -166,10 +166,11 @@ class MultiHeadAttention(nn.Module):
 ```
 
 ## Transformer architecture
-![mha](./figs/transformer_en-de.svg)
 
 `input embedding`在进入编码器Encoder前，通过与Positional Encoding相加获得位置信息，(<span style="color: gray">Positional Encoding只在这里输入相加一次，与DETR，DETR3D等视觉transformer不同</span>）。
 编码器encoder有两部分：注意力multi-head attention模块和Feedforwad模块，每个某块都包括一个残差连接residual，并且这里有一个比较重要的细节是Norm的位置，图中所示是post-norm，而目前很多实现中使用的是pre-norm。
+
+![architecture](./figs/transformer_en-de.svg)
 
 ### Positional encoding
 可以注意到注意力机制是没有学习到位置信息的，即打乱 $n$个query向量的顺序，得到的注意力输出的值是没有变化的。因此，需要显式地给每个query向量提供位置信息。位置编码向量是与query向量维度相同的向量，位置变量向量通过公式得到，也可以学习得到，位置编码向量与query向量相加，可以将位置信息编码到query向量中，即打乱$n$个query向量的顺序，会得到不同的注意力的值。
@@ -309,3 +310,21 @@ def causal_masking(seq_len):
 
 
 ### Architecture
+
+## MISC
+
+### attention intuition
+听说过Transformer的人一定会见到Query, Key, Value这几个东西，为什么Query和Key要想相乘得到相似度后与Value进行加权和？ 如果你也有这样的疑问，可以从下面的内容有一个感性认识，如果只想了解技术部分，这里完全可以跳过。参考资料来自[^1]
+
+[^1]: [动手深度学习中注意力机制](https://zh.d2l.ai/chapter_attention-mechanisms/index.html)
+
+心理学中威廉·詹姆斯提出了双组件(two-component)框架：受试者基于**自主性提示**和**非自主性提示**有选择的引导注意力的焦点。自主性提示就是人主观的想要关注的提示，而非自主性提示是基于环境中物体的突出性和易见性。举一个下面的例子：
+
+想象一下，假如你面前有五个物品： 一份报纸、一篇研究论文、一杯咖啡、一本笔记本和一本书，如下图。 所有纸制品都是黑白印刷的，但咖啡杯是红色的。 
+这个咖啡杯在这种视觉环境中是突出和显眼的， 不由自主地引起人们的注意，属于**非自主性提示**。
+但是，受试者可能更像看书，于是会主动、自主地去寻找书，选择认知和意识的控制，属于**自主性提示**。
+
+**将上面的自主性提示、非自主性提示与“查询query、键key和值value”联系起来**
+作为对比：查询query相当于自主性提示，键key相当于非自主性提示，而值value相当于提示对应的各种选择，因而键key和值value是成对出现的。下图框架构建了注意力机制：
+
+![qkv](./figs/qkv.svg)
