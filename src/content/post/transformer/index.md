@@ -38,16 +38,21 @@ Transformer主要由题图中的三个部分组成：scaled dot-product attentio
 ## 缩放点积注意力(scaled dot-product attention)
 缩放点积注意力模块由注意力评分函数和加权求和组成。
 
-注意力评分函数 $f_{attn}$ 是$\mathbf{query}$向量和$\mathbf{key}$向量的点积，即向量之间的相似度，并除以向量的长度 $d$ ($\mathbf{query}$和$\mathbf{key}$具有相同的长度 $d$ ):
+注意力评分函数$f_{attn}$是$\mathbf{query}$向量和$\mathbf{key}$向量的点积，即向量之间的相似度，并除以向量的长度$d$($\mathbf{query}$和$\mathbf{key}$具有相同的长度$d$):
 
-$$f_{attn}(\mathbf q, \mathbf k) = \frac{\mathbf{q} \mathbf{k}^\top }{\sqrt{d}} \in \mathbb R^{b \times n \times m}$$ 
+$$
+f_{attn}(\mathbf q, \mathbf k) = \frac{\mathbf{q} \mathbf{k}^\top }{\sqrt{d}} \in \mathbb R^{b \times n \times m}
+$$ 
 
-$\mathbf{query}$，$\mathbf{key}$ 和 $\mathbf{value}$都是张量的形式，例如 $\mathbf q\in\mathbb R^{b \times n\times d}$ ， $\mathbf k\in\mathbb R^{b \times m\times d}$ ， $\mathbf v\in\mathbb R^{b \times m \times v}$ ，其中 $b$ 代表batch，有 $n$ 个查询 $\mathbf{query}$ ，$m$ 个 $\mathbf{key}$ 和 $\mathbf{value}$。
+$\mathbf{query}$，$\mathbf{key}$ 和 $\mathbf{value}$都是张量的形式，例如 $\mathbf q\in\mathbb R^{b \times n\times d}$，$\mathbf k\in\mathbb R^{b \times m\times d}$，$\mathbf v\in\mathbb R^{b \times m \times v}$，其中$b$代表batch，有$n$个查询$\mathbf{query}$，$m$个$\mathbf{key}$和$\mathbf{value}$。
 
-> 你可能注意到了：$\mathbf{query}$ 的数量$n$可以和 $\mathbf{key}$ 的数量$m$不同，但是向量的长度$d$必须相同；$\mathbf{key}$ 和 $\mathbf{value}$ 的数量必须相同，但是向量的长度可以不同。但是在Transformer的自注意力self-attention中，由于是自注意力，数量和向量长度都是相同的。
+你可能注意到了$\mathbf{query}$的数量$n$可以和$\mathbf{key}$的数量$m$不同，但是向量的长度$d$必须相同；$\mathbf{key}$和$\mathbf{value}$的数量必须相同，但是向量的长度可以不同。但是在Transformer的自注意力self-attention中，由于是自注意力，数量和向量长度都是相同的。
 
 最后，缩放点积注意力模块是对$\mathbf{value}$的加权和：
-$$\mathrm{softmax}\left(\frac{\mathbf q \mathbf k^\top }{\sqrt{d}}\right) \cdot \mathbf V \in \mathbb{R}^{b \times n\times v}$$ 
+
+$$
+\mathrm{softmax}\left(\frac{\mathbf q \mathbf k^\top }{\sqrt{d}}\right) \cdot \mathbf V \in \mathbb{R}^{b \times n\times v}
+$$ 
 
 图中还有mask的部分，将会在[后面](#masked-multi-head-attention)进行说明。
 
@@ -118,7 +123,7 @@ def attention(query, key, value, attn_mask=None, dropout=None):
 
 ## 多头注意力(multi-head attention)
 
-多头注意力将$\mathbf{query}$，$\mathbf{key}$ 和 $\mathbf{value}$的向量长度 $d$ 切分成更小的几($n\_heads$)组，每组称为一个头，每个头的向量长度是 $d=\frac{d_{model}}{n\_heads}$，每个头内进行缩放点积注意力计算，并在每个头计算结束后连结(`concat`)起来，再经过一个全连接层后输出，如下图所示：
+多头注意力将$\mathbf{query}$，$\mathbf{key}$和$\mathbf{value}$的向量长度$d$切分成更小的几($n\_heads$)组，每组称为一个头，每个头的向量长度是$d=\frac{d_{model}}{n\_heads}$，每个头内进行缩放点积注意力计算，并在每个头计算结束后连结(`concat`)起来，再经过一个全连接层后输出，如下图所示：
 
 <div style="text-align: center">
     <figure style="display: inline-block">
@@ -128,14 +133,21 @@ def attention(query, key, value, attn_mask=None, dropout=None):
 </div>
 
 
-给定$\mathbf{q} \in \mathbb{R}^{d_q}$、 $\mathbf{k} \in \mathbb{R}^{d_k}$和$\mathbf{v} \in \mathbb{R}^{d_v}$， 每个注意力头$h_i(i=1,...,h)$的计算方法为：
+给定$\mathbf{q} \in \mathbb{R}^{d_q}$、$\mathbf{k} \in \mathbb{R}^{d_k}$和$\mathbf{v} \in \mathbb{R}^{d_v}$，每个注意力头$h_i(i=1,...,h)$的计算方法为：
 
-$$\mathbf{h}_i = f(\mathbf W_i^{(q)}\mathbf q, \mathbf W_i^{(k)}\mathbf k,\mathbf W_i^{(v)}\mathbf v) \in \mathbb R^{p_v}$$
+$$
+\mathbf{h}_i = f(\mathbf W_i^{(q)}\mathbf q, \mathbf W_i^{(k)}\mathbf k,\mathbf W_i^{(v)}\mathbf v) \in \mathbb R^{p_v}
+$$
 
 其中，可学习的参数包括$\mathbf W_i^{(q)}\in\mathbb R^{p_q\times d_q}$，$\mathbf W_i^{(k)}\in\mathbb R^{p_k\times d_k}$和$\mathbf W_i^{(v)}\in\mathbb R^{p_v\times d_v}$
 
 多头注意力的输出需要经过另一个全连接层转换， 它对应着$h$个头连结(concat)后的结果，因此其可学习参数是$\mathbf W_o\in\mathbb R^{p_o\times h p_v}$:
-$$\begin{split}\mathbf W_o \begin{bmatrix}\mathbf h_1\\\vdots\\\mathbf h_h\end{bmatrix} \in \mathbb{R}^{p_o}.\end{split}$$
+
+$$
+\begin{split}
+\mathbf W_o \begin{bmatrix}\mathbf h_1\\\vdots\\\mathbf h_h\end{bmatrix} \in \mathbb{R}^{p_o}.
+\end{split}
+$$
 
 其中$n\_heads$是超参数，存在：$p_q \cdot n\_heads = p_k \cdot n\_heads = p_v \cdot n\_heads = p_o$关系。
 
@@ -183,9 +195,14 @@ class MultiHeadAttention(nn.Module):
 ### 位置编码 positional encoding
 可以注意到注意力机制是没有学习到位置信息的，即打乱 $n$ 个query向量的顺序，得到的注意力输出的值是没有变化的。因此，需要显式地给每个query向量提供位置信息。位置编码向量是与query向量维度相同的向量，位置变量向量通过公式得到，也可以学习得到，位置编码向量与query向量相加，可以将位置信息编码到query向量中，即打乱 $n$ 个query向量的顺序，会得到不同的注意力的值。
 
-假设输入序列 $\mathbf{X} \in \mathbb{R}^{n \times d}$ 是包含 $n$ 个长度为 $d$ 的query向量的矩阵，位置编码使用相同形状的位置嵌入矩阵 $\mathbf{P} \in \mathbb{R}^{n \times d}$ ，并和输入相加得到输出 $\mathbf{X} + \mathbf{P}$ ，矩阵第 $i$ 行(表示序列中的位置)，第 $2j$ 列和第 $2j+1$ 列(表示每个位置的值)的元素为：
+假设输入序列$\mathbf{X} \in \mathbb{R}^{n \times d}$ 是包含$n$个长度为$d$的query向量的矩阵，位置编码使用相同形状的位置嵌入矩阵$\mathbf{P} \in \mathbb{R}^{n \times d}$，并和输入相加得到输出$\mathbf{X} + \mathbf{P}$，矩阵第$i$行(表示序列中的位置)，第$2j$列和第$2j+1$列(表示每个位置的值)的元素为：
 
-$$\begin{split}\begin{aligned} p_{i, 2j} &= \sin\left(\frac{i}{10000^{2j/d}}\right),\\p_{i, 2j+1} &= \cos\left(\frac{i}{10000^{2j/d}}\right).\end{aligned}\end{split}$$
+$$
+\begin{aligned} 
+p_{i, 2j} &= \sin\left(\frac{i}{10000^{2j/d}}\right) \\
+p_{i, 2j+1} &= \cos\left(\frac{i}{10000^{2j/d}}\right)
+\end{aligned}
+$$
 
 可以理解为在一列上是交替sin和cos的函数，并且沿着编码维度三角函数的频率单调降低。为什么频率会降低？以二进制编码类比下，看0-8的二进制表示：
 
