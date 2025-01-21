@@ -197,6 +197,7 @@ export default {
 				},
 				sm: {
 					css: {
+						maxWidth: '90ch',
 						code: {
 							fontSize: theme("fontSize.sm")[0],
 							fontWeight: "400",
