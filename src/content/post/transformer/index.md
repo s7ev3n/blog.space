@@ -10,33 +10,10 @@ tags: []
 draft: false
 ---
 
-# Transformer notes
-Transformer主要由题图中的三个部分组成：scaled dot-product attention, multi-head attention，Transformer achitecture。笔记主要以这三部分为大纲，每个部分会包括模块的解读和代码实现细节。
+> Transformer主要由题图中的三个部分组成：scaled dot-product attention, multi-head attention，Transformer achitecture。笔记主要以这三部分为大纲，每个部分会包括模块的解读和代码实现细节。
 
-<details>
-<summary>感性理解注意力</summary>
-听说过Transformer的人一定会见到Query, Key, Value这几个东西，为什么Query和Key要想相乘得到相似度后与Value进行加权和？ 如果你也有这样的疑问，可以从下面的内容有一个感性认识，如果只想了解技术部分，这里完全可以跳过。参考资料来自[动手深度学习中注意力机制](https://zh.d2l.ai/chapter_attention-mechanisms/index.html)
-
-心理学中威廉·詹姆斯提出了双组件(two-component)框架：受试者基于**自主性提示**和**非自主性提示**有选择的引导注意力的焦点。自主性提示就是人主观的想要关注的提示，而非自主性提示是基于环境中物体的突出性和易见性。举一个下面的例子：
-
-想象一下，假如你面前有五个物品： 一份报纸、一篇研究论文、一杯咖啡、一本笔记本和一本书，如下图。 所有纸制品都是黑白印刷的，但咖啡杯是红色的。 
-这个咖啡杯在这种视觉环境中是突出和显眼的， 不由自主地引起人们的注意，属于**非自主性提示**。
-但是，受试者可能更像看书，于是会主动、自主地去寻找书，选择认知和意识的控制，属于**自主性提示**。
-
-**将上面的自主性提示、非自主性提示与“查询query、键key和值value”联系起来**
-作为对比：查询query相当于自主性提示，键key相当于非自主性提示，而值value相当于提示对应的各种选择，因而键key和值value是成对出现的。下图框架构建了注意力机制：
-
-<div style="text-align: center">
-    <figure style="display: inline-block">
-        <img src="./figs/qkv.svg" alt="qkv" width="400">
-        <figcaption>Fig. attention</figcaption>
-    </figure>
-</div>
-
-</details>
-
-## 缩放点积注意力(scaled dot-product attention)
-缩放点积注意力模块由注意力评分函数和加权求和组成。
+## Scaled dot-product attention
+缩放点积注意力(scaled dot-product attention)模块由注意力评分函数和加权求和组成。
 
 注意力评分函数$f_{attn}$是$\mathbf{query}$向量和$\mathbf{key}$向量的点积，即向量之间的相似度，并除以向量的长度$d$($\mathbf{query}$和$\mathbf{key}$具有相同的长度$d$):
 
@@ -56,7 +33,7 @@ $$
 
 图中还有mask的部分，将会在[后面](#masked-multi-head-attention)进行说明。
 
-### 实现scaled dot-product attention
+
 用最原始的代码实现一下Transformer中的attention：
 
 ```python
@@ -121,17 +98,18 @@ def attention(query, key, value, attn_mask=None, dropout=None):
 
 ```
 
-## 多头注意力(multi-head attention)
+## Multi-head attention
 
 多头注意力将$\mathbf{query}$，$\mathbf{key}$和$\mathbf{value}$的向量长度$d$切分成更小的几($n\_heads$)组，每组称为一个头，每个头的向量长度是$d=\frac{d_{model}}{n\_heads}$，每个头内进行缩放点积注意力计算，并在每个头计算结束后连结(`concat`)起来，再经过一个全连接层后输出，如下图所示：
 
-<div style="text-align: center">
+<!-- <div style="text-align: center">
     <figure style="display: inline-block">
         <img src="./figs/multi-head-attention.svg" alt="mha" width="400">
         <figcaption>Fig. multi-head attention</figcaption>
     </figure>
-</div>
+</div> -->
 
+![mha](./figs/multi-head-attention.svg)
 
 给定$\mathbf{q} \in \mathbb{R}^{d_q}$、$\mathbf{k} \in \mathbb{R}^{d_k}$和$\mathbf{v} \in \mathbb{R}^{d_v}$，每个注意力头$h_i(i=1,...,h)$的计算方法为：
 
@@ -187,13 +165,14 @@ class MultiHeadAttention(nn.Module):
         return res 
 ```
 
-## Transformer模型结构
+## Transformer architecture
+![mha](./figs/transformer_en-de.svg)
 
 `input embedding`在进入编码器Encoder前，通过与Positional Encoding相加获得位置信息，(<span style="color: gray">Positional Encoding只在这里输入相加一次，与DETR，DETR3D等视觉transformer不同</span>）。
 编码器encoder有两部分：注意力multi-head attention模块和Feedforwad模块，每个某块都包括一个残差连接residual，并且这里有一个比较重要的细节是Norm的位置，图中所示是post-norm，而目前很多实现中使用的是pre-norm。
 
-### 位置编码 positional encoding
-可以注意到注意力机制是没有学习到位置信息的，即打乱 $n$ 个query向量的顺序，得到的注意力输出的值是没有变化的。因此，需要显式地给每个query向量提供位置信息。位置编码向量是与query向量维度相同的向量，位置变量向量通过公式得到，也可以学习得到，位置编码向量与query向量相加，可以将位置信息编码到query向量中，即打乱 $n$ 个query向量的顺序，会得到不同的注意力的值。
+### Positional encoding
+可以注意到注意力机制是没有学习到位置信息的，即打乱 $n$个query向量的顺序，得到的注意力输出的值是没有变化的。因此，需要显式地给每个query向量提供位置信息。位置编码向量是与query向量维度相同的向量，位置变量向量通过公式得到，也可以学习得到，位置编码向量与query向量相加，可以将位置信息编码到query向量中，即打乱$n$个query向量的顺序，会得到不同的注意力的值。
 
 假设输入序列$\mathbf{X} \in \mathbb{R}^{n \times d}$ 是包含$n$个长度为$d$的query向量的矩阵，位置编码使用相同形状的位置嵌入矩阵$\mathbf{P} \in \mathbb{R}^{n \times d}$，并和输入相加得到输出$\mathbf{X} + \mathbf{P}$，矩阵第$i$行(表示序列中的位置)，第$2j$列和第$2j+1$列(表示每个位置的值)的元素为：
 
@@ -266,7 +245,7 @@ class PositionEncoding(nn.Module):
 ```
 </details>
 
-### 编码器 encoder block
+### Encoder block
 编码器encoder中第一个细节是`pre-norm`和`post-norm`：
 ```python
 class SublayerResidual(nn.Module):
@@ -299,7 +278,7 @@ class SublayerResidual(nn.Module):
 ```
 第二细节也是问题：**为什么使用的是LayerNorm，而不是CNN时代的BatchNorm ?**
 
-### 掩码自注意力 masked multi-head attention
+### Masking
 掩码发生在 `attention` 函数中，将key和value相乘得到的attention score matrix，根据一个masked attention matrix遮盖掉不需要的attention score：
 ```python
 if attn_mask is not None:
@@ -329,4 +308,4 @@ def causal_masking(seq_len):
 为什么要mask掉未来的信息？
 
 
-### 整体结构
+### Architecture
