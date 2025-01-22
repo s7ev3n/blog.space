@@ -167,30 +167,21 @@ class MultiHeadAttention(nn.Module):
 ![architecture](./figs/transformer_en-de.svg)
 
 ### Positional encoding
-自注意力机制中序列每个$\mathbf{q_i}$和所有$\mathbf{q}$进行attention计算后的输出与$\mathbf{q_i}$在序列中的顺序无关，无法对序列进行建模，因此，需要显式地给每个$\mathbf{q}$向量提供位置信息。位置编码向量是与$\mathbf{q}$向量维度相同的向量，位置编码向量通过公式得到，也可以学习得到，位置编码与$\mathbf{q}$向量相加，可以将位置信息编码到$\mathbf{q}$向量中。
+自注意力机制中序列每个$\mathbf{q_i}$和所有$\mathbf{q}$进行attention计算后的输出与$\mathbf{q_i}$在序列中的顺序无关，无法对序列进行建模，因此，需要显式地给每个$\mathbf{q}$向量提供位置信息。位置编码向量是与$\mathbf{q}$向量维度相同的向量，位置编码向量通过公式得到，也可以是可学习位置编码，位置编码与$\mathbf{q}$向量相加，可以将位置信息编码到$\mathbf{q}$向量中。
 
-假设输入序列$\mathbf{X} \in \mathbb{R}^{n \times d}$ 是包含$n$个长度为$d$的$\mathbf{q}$向量的矩阵，位置编码使用相同形状的位置嵌入矩阵$\mathbf{P} \in \mathbb{R}^{n \times d}$，并和输入相加得到输出$\mathbf{X} + \mathbf{P}$，矩阵第$i$行(表示序列中的位置)，第$2j$列和第$2j+1$列(表示每个位置的值)的元素为：
+Transformer中使用的是正弦编码，是一种**绝对位置编码**：假设输入序列$\mathbf{X} \in \mathbb{R}^{n \times d}$是包含$n$个长度为$d$的$\mathbf{q}$向量的矩阵，位置编码使用相同形状的位置嵌入矩阵$\mathbf{P} \in \mathbb{R}^{n \times d}$，并和输入相加得到输出$\mathbf{X} + \mathbf{P}$，矩阵第$i$行(表示序列中的位置)，第$2j$列和第$2j+1$列(表示每个位置的值)的元素为：
 
 $$
 \begin{aligned} 
-p_{i, 2j} &= \sin\left(\frac{i}{10000^{2j/d}}\right) \\
-p_{i, 2j+1} &= \cos\left(\frac{i}{10000^{2j/d}}\right)
+p_{pos, 2j} &= \sin\left(\frac{pos}{10000^{2i/d}}\right) \\
+p_{pos, 2j+1} &= \cos\left(\frac{pos}{10000^{2i/d}}\right)
 \end{aligned}
 $$
 
-可以理解为在一列上是交替$sin$和$cos$的函数，并且沿着编码维度三角函数的频率单调降低。为什么频率会降低？以二进制编码类比下，看0-8的二进制表示：
+从上面的公式可以知道，当$i$增大时候，分母$10000^{\frac{2i}{d}}$会迅速变大，导致$\frac{pos}{10000^{2i/d}}$迅速趋近于0，正弦函数会接近0和余弦函数会接近1.因此，在位置编码在$d$维度越靠后越接近0和1交替，位置靠前的元素位置编码的值会变化的更快，如下图：
 
-```text
-  0的二进制是：000
-  1的二进制是：001
-  2的二进制是：010
-  3的二进制是：011
-  4的二进制是：100
-  5的二进制是：101
-  6的二进制是：110
-  7的二进制是：111
-```
-在二进制表示中，较高比特位的交替频率低于较低比特位。类比位置编码向量，一行中前面的元素的交替频率要高于后面的元素。
+![pe](./figs/pe.png)
+
 
 ### `PositionEncoding`的实现
 ```python
@@ -274,7 +265,7 @@ class SublayerResidual(nn.Module):
 > 另外，Transformer使用的是LayerNorm：**为什么使用的是LayerNorm，而不是CNN时代的BatchNorm ?**
 
 ### Decoder
-`Decoder`与`Encoder`的区别并不太大，主要的区别是`Decoder`使用掩码自注意力(`Masked MHA`)掩码发生在 `attention` 函数中，将$\mathbf{query}$和$\mathbf{key}$相乘得到的`attention score matrix`根据`attention mask`遮盖掉不需要的`attention score`，前面[`attention`](#attention-implementation)的实现中，有一个`attn_mask`参数，就是这里的掩码
+`Decoder`与`Encoder`的区别并不太大，主要的区别是`Decoder`使用掩码自注意力(`Masked MHA`)掩码发生在 `attention` 函数中，将$\mathbf{query}$和$\mathbf{key}$相乘得到的`attention score matrix`根据`attention mask`遮盖掉不需要的`attention score`，前面[`attention`](#attention-implementation)的实现中，有一个`attn_mask`参数，就是这里的掩码。
 
 ```python
 if attn_mask is not None:
