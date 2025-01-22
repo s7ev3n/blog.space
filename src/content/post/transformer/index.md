@@ -10,31 +10,33 @@ tags: []
 draft: false
 ---
 
-> Transformer主要由题图中的三个部分组成：scaled dot-product attention, multi-head attention，Transformer achitecture。笔记主要以这三部分为大纲，每个部分会包括模块的解读和代码实现细节。
+> Transformer由论文[Attention Is All You Need](https://arxiv.org/abs/1706.03762)提出，开启了AI的Transformer时代，几乎所有的模型都可以见到它的身影。Transformer主要由题图中的三个部分组成：scaled dot-product attention, multi-head attention，transformer encoder-decoder。这篇笔记主要以这三部分为大纲，每个部分会包括模块的解读和代码实现细节。
 
 ## Scaled dot-product attention
-缩放点积注意力(scaled dot-product attention)模块由注意力评分函数和加权求和组成。
+缩放点积注意力(scaled dot-product attention)首先由注意力评分函数建模查询$\mathbf{query}和键$\mathbf{key}$之间的关系，然后将评分值送入$softmax$函数中，得到查询$\mathbf{query}和键$\mathbf{key}$的概率分布(注意力权重)，最后基于注意力权重对值$\mathbf{value}$计算加权，如下图[^1]
 
-注意力评分函数$f_{attn}$是$\mathbf{query}$向量和$\mathbf{key}$向量的点积，即向量之间的相似度，并除以向量的长度$d$($\mathbf{query}$和$\mathbf{key}$具有相同的长度$d$):
+![attention-output](./figs/attention-output.svg)
+
+缩放点积注意力的注意力评分函数$f_{attn}$是$\mathbf{query}$向量和$\mathbf{key}$向量的点积，即向量之间的相似度，并除以向量的长度$d$($\mathbf{query}$和$\mathbf{key}$具有相同的长度$d$):
 
 $$
 f_{attn}(\mathbf q, \mathbf k) = \frac{\mathbf{q} \mathbf{k}^\top }{\sqrt{d}} \in \mathbb R^{b \times n \times m}
 $$ 
 
-$\mathbf{query}$，$\mathbf{key}$ 和 $\mathbf{value}$都是张量的形式，例如 $\mathbf q\in\mathbb R^{b \times n\times d}$，$\mathbf k\in\mathbb R^{b \times m\times d}$，$\mathbf v\in\mathbb R^{b \times m \times v}$，其中$b$代表batch，有$n$个查询$\mathbf{query}$，$m$个$\mathbf{key}$和$\mathbf{value}$。
+> 为什么要除以$\sqrt{d}$ ? 假设$\mathbf{query}$向量和$\mathbf{key}$向量的所有元素都是独立的随机变量，并且都满足零均值和单位方差，那么两个向量的点积的均值为$0$，方差为$d$。为确保无论向量长度如何，点积的方差在不考虑向量长度的情况下仍然是，我们再将点积除以$\sqrt{d}$[^1]。另外从实际的计算角度看，$\mathbf{query}$向量和$\mathbf{key}$向量的点积值可能会很大，过大的权重影响softmax的输出，使得某些评分值接近1，某些趋近0，使得梯度的计算可能不稳定。
 
-你可能注意到了$\mathbf{query}$的数量$n$可以和$\mathbf{key}$的数量$m$不同，但是向量的长度$d$必须相同；$\mathbf{key}$和$\mathbf{value}$的数量必须相同，但是向量的长度可以不同。但是在Transformer的自注意力self-attention中，由于是自注意力，数量和向量长度都是相同的。
+$\mathbf{query}$，$\mathbf{key}$和$\mathbf{value}$都是张量的形式，例如 $\mathbf q\in\mathbb R^{b \times n\times d}$，$\mathbf k\in\mathbb R^{b \times m\times d}$，$\mathbf v\in\mathbb R^{b \times m \times v}$，其中$b$代表batchsize，有$n$个查询$\mathbf{query}$，$m$个$\mathbf{key}$和$\mathbf{value}$。
 
-最后，缩放点积注意力模块是对$\mathbf{value}$的加权和：
+<span style="color: gray">你可能注意到了$\mathbf{query}$的数量$n$可以和$\mathbf{key}$的数量$m$不同，但是向量的长度$d$必须相同；$\mathbf{key}$和$\mathbf{value}$的数量必须相同，但是向量的长度可以不同。但是在Transformer的自注意力self-attention中，由于是自注意力，数量和向量长度都是相同的。</span>
+
+最后，缩放点积注意力模块$f_{sda}$是对$\mathbf{value}$的加权和：
 
 $$
-\mathrm{softmax}\left(\frac{\mathbf q \mathbf k^\top }{\sqrt{d}}\right) \cdot \mathbf V \in \mathbb{R}^{b \times n\times v}
+f_{sda}=\mathrm{softmax}\left(\frac{\mathbf q \mathbf k^\top }{\sqrt{d}}\right) \cdot \mathbf V \in \mathbb{R}^{b \times n\times v}
 $$ 
 
-图中还有mask的部分，将会在[后面](#masked-multi-head-attention)进行说明。
-
-
-用最原始的代码实现一下Transformer中的attention：
+### attention implementation
+缩放点积注意力`attention`的实现如下代码，代码中包括如何计算加权和的具体例子，另外，其中的`attn_mask`在[masked multi-head attention](#decoder)中更进一步解读。
 
 ```python
 def attention(query, key, value, attn_mask=None, dropout=None):
@@ -99,38 +101,30 @@ def attention(query, key, value, attn_mask=None, dropout=None):
 ```
 
 ## Multi-head attention
-
-多头注意力将$\mathbf{query}$，$\mathbf{key}$和$\mathbf{value}$的向量长度$d$切分成更小的几($n\_heads$)组，每组称为一个头，每个头的向量长度是$d=\frac{d_{model}}{n\_heads}$，每个头内进行缩放点积注意力计算，并在每个头计算结束后连结(`concat`)起来，再经过一个全连接层后输出，如下图所示：
-
-<!-- <div style="text-align: center">
-    <figure style="display: inline-block">
-        <img src="./figs/multi-head-attention.svg" alt="mha" width="400">
-        <figcaption>Fig. multi-head attention</figcaption>
-    </figure>
-</div> -->
+多头注意力(Multi-head attention, MHA)将$\mathbf{query}$，$\mathbf{key}$和$\mathbf{value}$的向量长度$d$切分成更小的几($n_{head}$)组，每组称为一个头，每个头的向量长度是$d=\frac{d_{model}}{n_{head}}$，每个头内**并行**的进行缩放点积注意力计算，并在每个头计算结束后连结(`concat`)起来，再经过一个全连接层后输出，如下图[^1]所示：
 
 ![mha](./figs/multi-head-attention.svg)
 
-给定$\mathbf{q} \in \mathbb{R}^{d_q}$、$\mathbf{k} \in \mathbb{R}^{d_k}$和$\mathbf{v} \in \mathbb{R}^{d_v}$，每个注意力头$h_i(i=1,...,h)$的计算方法为：
+> 为什么要分成多个头来计算？当给定相同的查询、键和值的集合时，我们希望模型可以基于相同的注意力机制学习到不同的行为，然后将不同的行为作为知识组合起来，捕获序列内各种范围的依赖关系(例如，短距离依赖和长距离依赖关系)。因此，允许注意力机制组合使用查询、键和值的**不同子空间表示(representation subspaces)**可能是有益的[^1]。基于这种设计，每个头都可能会关注输入的不同部分，可以表示比简单加权平均值更复杂的函数
+
+$\mathbf{q_i} \in \mathbb{R}^{b \times n \times n_{head} \times d_q}$、$\mathbf{k_i} \in \mathbb{R}^{b \times m \times n_{head} \times d_k}$和$\mathbf{v_i} \in \mathbb{R}^{b \times m \times n_{head} \times d_v}$，每个注意力头$h_i(i=1,...,n_{head})$的计算方法为：
 
 $$
-\mathbf{h}_i = f(\mathbf W_i^{(q)}\mathbf q, \mathbf W_i^{(k)}\mathbf k,\mathbf W_i^{(v)}\mathbf v) \in \mathbb R^{p_v}
+\mathbf{h}_i = f_{sda}(\mathbf W_i^{(q)}\mathbf q_i, \mathbf W_i^{(k)}\mathbf k_i,\mathbf W_i^{(v)}\mathbf v_i) \in \mathbb R^{b \times n \times n_{head} \times d_v}
 $$
 
-其中，可学习的参数包括$\mathbf W_i^{(q)}\in\mathbb R^{p_q\times d_q}$，$\mathbf W_i^{(k)}\in\mathbb R^{p_k\times d_k}$和$\mathbf W_i^{(v)}\in\mathbb R^{p_v\times d_v}$
-
-多头注意力的输出需要经过另一个全连接层转换， 它对应着$h$个头连结(concat)后的结果，因此其可学习参数是$\mathbf W_o\in\mathbb R^{p_o\times h p_v}$:
+其中，可学习的参数包括$\mathbf W_i^{(q)}\in\mathbb R^{d_{model}\times d_q}$，$\mathbf W_i^{(k)}\in\mathbb R^{d_{model}\times d_k}$和$\mathbf W_i^{(v)}\in\mathbb R^{d_{model}\times d_v}$。多头注意力的输出需要经过另一个全连接层转换，它对应着$h$个头连结(`concat`)后的结果，因此其可学习参数是$\mathbf W_o\in\mathbb R^{d_{model}\times d_{model}}$:
 
 $$
 \begin{split}
-\mathbf W_o \begin{bmatrix}\mathbf h_1\\\vdots\\\mathbf h_h\end{bmatrix} \in \mathbb{R}^{p_o}.
+\mathbf W_o \begin{bmatrix}\mathbf h_1\\\vdots\\\mathbf h_{n_{head}} \end{bmatrix} \in \mathbb{R}^{b \times n \times d_{model}}
 \end{split}
 $$
 
-其中$n\_heads$是超参数，存在：$p_q \cdot n\_heads = p_k \cdot n\_heads = p_v \cdot n\_heads = p_o$关系。
+其中$n_{head}$是超参数，并且$d_{model}=n_{head}\cdot d_{q}=n_{head}\cdot d_{k}=n_{head}\cdot d_{v}$关系。
 
-multi-head attention的实现：
-
+### MHA implementation
+实现MHA时，不必为每个头单独建立单独的全连接层，而是通过整体的矩阵计算，再计算后分到各个头上进行attention计算。下面的实现是Transformer中`self-attention`，其中的$\mathbf{q}$，$\mathbf{k}$和$\mathbf{v}$的向量长度都相同：
 ```python
 class MultiHeadAttention(nn.Module):
     def __init__(self, d_model, n_heads, dropout=0.1):
@@ -153,13 +147,13 @@ class MultiHeadAttention(nn.Module):
         
         q = q.view(b, t, self.n_heads, d_model // self.n_heads).transpose(1, 2)
         k = k.view(b, t, self.n_heads, d_model // self.n_heads).transpose(1, 2)
-        v = v.view(b, t, self.n_heads, d_model // self.n_heads).transpose(1, 2) # (b, n_heads, t, d_k)
+        v = v.view(b, t, self.n_heads, d_model // self.n_heads).transpose(1, 2) # (b, n_heads, t, d_h)
         
         x, attn = attention(q, k, v, attn_mask=mask, dropout=self.dropout)
-        # x -> (b, n_heads, t, d_k), attn -> (b, n_heads, t, t)
-        x = x.transpose(1, 2) # -> (b, t, n_heads, d_k)
+        # x -> (b, n_heads, t, d_h), attn -> (b, n_heads, t, t)
+        x = x.transpose(1, 2) # -> (b, t, n_heads, d_h)
         # it is necessary to add contiguous here
-        x = x.contiguous().view(b, t, d_model) # -> (b, t, n_heads * d_k)
+        x = x.contiguous().view(b, t, d_model) # -> (b, t, n_heads * d_h)
         res = self.l(x) # (b, t, d_model)
     
         return res 
@@ -167,15 +161,15 @@ class MultiHeadAttention(nn.Module):
 
 ## Transformer architecture
 
-`input embedding`在进入编码器Encoder前，通过与Positional Encoding相加获得位置信息，(<span style="color: gray">Positional Encoding只在这里输入相加一次，与DETR，DETR3D等视觉transformer不同</span>）。
-编码器encoder有两部分：注意力multi-head attention模块和Feedforwad模块，每个某块都包括一个残差连接residual，并且这里有一个比较重要的细节是Norm的位置，图中所示是post-norm，而目前很多实现中使用的是pre-norm。
+`input embedding`在进入编码器`Encoder`前，通过与`Positional Encoding`相加获得位置信息，(<span style="color: gray">Positional Encoding只在这里输入相加一次，与DETR，DETR3D等视觉Transformer不同</span>）。
+编码器`Encoder`有两部分：注意力`multi-head attention`模块和`Feedforwad`模块，每个模块都包括一个残差连接`Residual`，并且这里有一个比较重要的细节是`Norm`的位置，图中所示是`post-norm`，而目前很多实现中使用的是`pre-norm`。
 
 ![architecture](./figs/transformer_en-de.svg)
 
 ### Positional encoding
-可以注意到注意力机制是没有学习到位置信息的，即打乱 $n$个query向量的顺序，得到的注意力输出的值是没有变化的。因此，需要显式地给每个query向量提供位置信息。位置编码向量是与query向量维度相同的向量，位置变量向量通过公式得到，也可以学习得到，位置编码向量与query向量相加，可以将位置信息编码到query向量中，即打乱$n$个query向量的顺序，会得到不同的注意力的值。
+自注意力机制中序列每个$\mathbf{q_i}$和所有$\mathbf{q}$进行attention计算后的输出与$\mathbf{q_i}$在序列中的顺序无关，无法对序列进行建模，因此，需要显式地给每个$\mathbf{q}$向量提供位置信息。位置编码向量是与$\mathbf{q}$向量维度相同的向量，位置编码向量通过公式得到，也可以学习得到，位置编码与$\mathbf{q}$向量相加，可以将位置信息编码到$\mathbf{q}$向量中。
 
-假设输入序列$\mathbf{X} \in \mathbb{R}^{n \times d}$ 是包含$n$个长度为$d$的query向量的矩阵，位置编码使用相同形状的位置嵌入矩阵$\mathbf{P} \in \mathbb{R}^{n \times d}$，并和输入相加得到输出$\mathbf{X} + \mathbf{P}$，矩阵第$i$行(表示序列中的位置)，第$2j$列和第$2j+1$列(表示每个位置的值)的元素为：
+假设输入序列$\mathbf{X} \in \mathbb{R}^{n \times d}$ 是包含$n$个长度为$d$的$\mathbf{q}$向量的矩阵，位置编码使用相同形状的位置嵌入矩阵$\mathbf{P} \in \mathbb{R}^{n \times d}$，并和输入相加得到输出$\mathbf{X} + \mathbf{P}$，矩阵第$i$行(表示序列中的位置)，第$2j$列和第$2j+1$列(表示每个位置的值)的元素为：
 
 $$
 \begin{aligned} 
@@ -184,7 +178,7 @@ p_{i, 2j+1} &= \cos\left(\frac{i}{10000^{2j/d}}\right)
 \end{aligned}
 $$
 
-可以理解为在一列上是交替sin和cos的函数，并且沿着编码维度三角函数的频率单调降低。为什么频率会降低？以二进制编码类比下，看0-8的二进制表示：
+可以理解为在一列上是交替$sin$和$cos$的函数，并且沿着编码维度三角函数的频率单调降低。为什么频率会降低？以二进制编码类比下，看0-8的二进制表示：
 
 ```text
   0的二进制是：000
@@ -198,9 +192,7 @@ $$
 ```
 在二进制表示中，较高比特位的交替频率低于较低比特位。类比位置编码向量，一行中前面的元素的交替频率要高于后面的元素。
 
-<details>
-<summary>PositionEncoding的实现</summary>
-
+### `PositionEncoding`的实现
 ```python
 class PositionEncoding(nn.Module):
     """Position Encoding.
@@ -244,10 +236,10 @@ class PositionEncoding(nn.Module):
         x = x + self.pe[:, : x.size(1)].requires_grad_(False) # max_len is much longer than t
         return self.dropout(x)
 ```
-</details>
 
-### Encoder block
-编码器encoder中第一个细节是`pre-norm`和`post-norm`：
+
+### Encoder
+基本的编码器`Encoder`有两部分：`MHA`模块和`Feedforwad`模块，每个模块都包括一个残差连接`Residual`和`Norm`。其中遇到的第一个细节是`Norm`的位置，一般有两种：`pre-norm`和`post-norm`。`post-norm`是`LayerNorm(x+sublayer(x))`，是原文中所采用的，在后序的工作中，很多情况下被改成了`pre-norm`； `pre-norm`是`x+sublayer(LayerNorm(x))`，即将`Normalization`的位置提前到了`MHA`或`FFN`之前。从下面的`SublayerResidual`实现看`Norm`的位置：
 ```python
 class SublayerResidual(nn.Module):
     def __init__(self, d_model=512, dropout=0.1):
@@ -265,11 +257,12 @@ class SublayerResidual(nn.Module):
             x + sublayer(LayerNorm(x))       
         Origin paper is using post-norm:
             LayerNorm(x+sublayer(x))
-        There are literatures about the pros and cons of pre-norm and post-norm[1,2].
+        There are literatures about the pros and cons of 
+        pre-norm and post-norm[1,2].
 
         Detail 2:
-        We apply dropout to the output of each sub-layer, before it is added to the 
-        sub-layer input and normalized.
+        We apply dropout to the output of each sub-layer, 
+        before it is added to the sublayer input and normalized.
 
         Reference: 
         1. https://youtu.be/kCc8FmEb1nY?list=PLAqhIrjkxbuWI23v9cThsA9GvCAUhRvKZ&t=5723
@@ -277,24 +270,27 @@ class SublayerResidual(nn.Module):
         """
         return x + self.dropout(sublayer(self.ln(x)))
 ```
-第二细节也是问题：**为什么使用的是LayerNorm，而不是CNN时代的BatchNorm ?**
 
-### Masking
-掩码发生在 `attention` 函数中，将key和value相乘得到的attention score matrix，根据一个masked attention matrix遮盖掉不需要的attention score：
+> 另外，Transformer使用的是LayerNorm：**为什么使用的是LayerNorm，而不是CNN时代的BatchNorm ?**
+
+### Decoder
+`Decoder`与`Encoder`的区别并不太大，主要的区别是`Decoder`使用掩码自注意力(`Masked MHA`)掩码发生在 `attention` 函数中，将$\mathbf{query}$和$\mathbf{key}$相乘得到的`attention score matrix`根据`attention mask`遮盖掉不需要的`attention score`，前面[`attention`](#attention-implementation)的实现中，有一个`attn_mask`参数，就是这里的掩码
+
 ```python
 if attn_mask is not None:
     score = score.masked_fill(attn_mask == 0, -1e9)
 ```
 
-传入的masked attention matrix有很多名称，但是核心的目的只有一个，就是将未来的信息去掉
+传入的`attention mask`有很多名称，但是核心的目的只有一个，就是将未来的信息去掉。
 ```python
 def causal_masking(seq_len):
     """Masking of self-attention.
 
-    The masking has many names: causal masking, look ahead masking, subsequent masking
-    and decoder masking, etc. But the main purpose is the same, mask out after the 
-    position i to prevent leaking of future information in the transformer decoder. 
-    Usually, the mask is a triangular matrix where the elements above diagnal is True
+    The masking has many names: causal masking, look ahead masking, 
+    subsequent masking and decoder masking, etc. But the main purpose 
+    is the same, mask out after the position i to prevent leaking of 
+    future information in the transformer decoder. Usually, the mask 
+    is a triangular matrix where the elements above diagnal is True
     and below is False. 
 
     Args:
@@ -306,17 +302,19 @@ def causal_masking(seq_len):
     return mask == 1
 ```
 
-为什么要mask掉未来的信息？
+> 为什么要mask掉未来的信息？Transformer最初用来进行机器翻译任务
+
+> masking可以控制序列中每个query的建模范围：基于Encoder双向建模的BERT和Decoder-only的GPT是两个代表。
 
 
 ### Architecture
 
+## Loss
+
 ## MISC
 
-### attention intuition
+### Attention intuition
 听说过Transformer的人一定会见到Query, Key, Value这几个东西，为什么Query和Key要想相乘得到相似度后与Value进行加权和？ 如果你也有这样的疑问，可以从下面的内容有一个感性认识，如果只想了解技术部分，这里完全可以跳过。参考资料来自[^1]
-
-[^1]: [动手深度学习中注意力机制](https://zh.d2l.ai/chapter_attention-mechanisms/index.html)
 
 心理学中威廉·詹姆斯提出了双组件(two-component)框架：受试者基于**自主性提示**和**非自主性提示**有选择的引导注意力的焦点。自主性提示就是人主观的想要关注的提示，而非自主性提示是基于环境中物体的突出性和易见性。举一个下面的例子：
 
@@ -328,3 +326,5 @@ def causal_masking(seq_len):
 作为对比：查询query相当于自主性提示，键key相当于非自主性提示，而值value相当于提示对应的各种选择，因而键key和值value是成对出现的。下图框架构建了注意力机制：
 
 ![qkv](./figs/qkv.svg)
+
+[^1]: [动手深度学习中注意力机制](https://zh.d2l.ai/chapter_attention-mechanisms/index.html)
