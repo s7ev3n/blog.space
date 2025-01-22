@@ -263,6 +263,9 @@ class SublayerResidual(nn.Module):
 ```
 
 > 另外，Transformer使用的是LayerNorm：**为什么使用的是LayerNorm，而不是CNN时代的BatchNorm ?**
+> 首先，理解LayerNorm和BatchNorm的区别：统计均值和方差的维度不同，假设$q \in \mathbf{R}^{b \times t \times d}$，LayerNorm在$d$的维度对每个$t$统计，BatchNorm在$b$维度对每个$t$统计。
+> ![norm](./figs/BN_LN.jpg)
+> BatchNorm统计的是batch的信息，而LayerNorm统计的是每个样本的信息；由于Transformer是序列任务，长度可能会经常变换，所以显然LayerNorm不受影响，更适合。同时在Transformer中，LayerNorm会使得训练更稳定。
 
 ### Decoder
 `Decoder`与`Encoder`的区别并不太大，主要的区别是`Decoder`使用掩码自注意力(`Masked MHA`)掩码发生在 `attention` 函数中，将$\mathbf{query}$和$\mathbf{key}$相乘得到的`attention score matrix`根据`attention mask`遮盖掉不需要的`attention score`，前面[`attention`](#attention-implementation)的实现中，有一个`attn_mask`参数，就是这里的掩码。
