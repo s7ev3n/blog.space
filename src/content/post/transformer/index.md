@@ -160,9 +160,14 @@ class MultiHeadAttention(nn.Module):
 ```
 
 ## Transformer architecture
-
+Transformer原文中提出的是Encoder-decoder的架构，如下图所示。
 `input embedding`在进入编码器`Encoder`前，通过与`Positional Encoding`相加获得位置信息，(<span style="color: gray">Positional Encoding只在这里输入相加一次，与DETR，DETR3D等视觉Transformer不同</span>）。
-编码器`Encoder`有两部分：注意力`multi-head attention`模块和`Feedforwad`模块，每个模块都包括一个残差连接`Residual`，并且这里有一个比较重要的细节是`Norm`的位置，图中所示是`post-norm`，而目前很多实现中使用的是`pre-norm`。
+
+编码器`Encoder`有两部分：注意力`multi-head attention`模块和`Feedforward`模块，每个模块都包括一个残差连接`Residual`，并且这里有一个比较重要的细节是`Norm`的位置，图中所示是`post-norm`，而目前很多实现中使用的是`pre-norm`。
+
+解码器`Decoder`和编码器`Encoder`很类似，不同的是在解码`embedding`输入后，使用了`Masked MHA`，即掩码掉未来的信息。
+
+Transformer的base model，使用了$6$层Encoder和$6$层Decoder，$d_{model}=512$，多头注意力的$n_{head}=8$，因此每个头中的$d_q=d_k=d_v=64$，`Feedforward`的线性层是$2048$，以及$p_{drop}=0.1$
 
 ![architecture](./figs/transformer_en-de.svg)
 
@@ -180,10 +185,15 @@ $$
 
 从上面的公式可以知道，当$i$增大时候，分母$10000^{\frac{2i}{d}}$会迅速变大，导致$\frac{pos}{10000^{2i/d}}$迅速趋近于0，正弦函数会接近0和余弦函数会接近1.因此，在位置编码在$d$维度越靠后越接近0和1交替，位置靠前的元素位置编码的值会变化的更快，如下图：
 
+<details>
+<summary><code>PositionEncoding</code>可视化</summary>
+
 ![pe](./figs/pe.png)
 
+</details>
+
 <details>
-<summary>展开后可见`PositionEncoding`的实现</summary>
+<summary><code>PositionEncoding</code>实现</summary>
     
 ```python
 class PositionEncoding(nn.Module):
@@ -303,16 +313,66 @@ def causal_masking(seq_len):
     return mask == 1
 ```
 
-> 为什么要mask掉未来的信息？Transformer最初用来进行机器翻译任务
+> 为什么要mask掉未来的信息？Transformer最初用来进行机器翻译任务，即给定已知的语言序列(例如是英文)，翻译成目标语言序列(例如是英文)，对于已知的语言序列，我用编码器Encoder，没有mask，构建序列中所有元素的之间关系，在解码器Decoder过程中，使用的是自回归的方式(即下一个输出依赖之前所有的输出)，训练的过程中目标语言序列会作为输入进入编码器Decoder进行Attention计算，如果没有mask，目标语言序列会看到未来的元素，这与推理时的行为不一致(推理，即翻译的时候，是不可能看到未来信息)。mask会强制模型只关注序列历史的输入。mask可以控制序列中每个query的建模范围：基于**Encoder-only的BERT**和**Decoder-only的GPT**是两个代表。
 
-> masking可以控制序列中每个query的建模范围：基于Encoder双向建模的BERT和Decoder-only的GPT是两个代表。
-
-
-### Architecture
-
-## Loss
+> **需要注意的是Decoder-only的GPT使用的不是Transformer的Decoder，而是使用casual mask的Encoder！**
 
 ## MISC
+上面是Transformer主要模块解读和代码实现的细节。为了训练Transformer的NLP任务，还有很多其他内容，在这个章节解读。
+
+### Embedding
+Transformer用在NLP任务中，语言有有限的符号，所以可以创建一个巨大的词汇表，每个句子是词汇表中的元素组合，这个巨大的词汇表使用`nn.Embedding(vocab_size, d_model)`来构建(`nn.Embedding`是随机初始化的)。词汇表中的元素，即是`Embedding`，通过训练不断学习到。
+
+### Tokenizer
+Tokenizer是NLP任务必不可少的模块，将字符串通过`Embedding table`转换成训练使用的`embeddings`，每个`token`是一个`int`数值，对应`Embedding table`的索引：
+
+$$
+text\_str \rightarrow \fbox{tokenizer} \rightarrow tokens \rightarrow \fbox{embedding table} \rightarrow embeddings \in \mathbf{R^{b \times t\times d_{model}}}
+$$
+
+`token`是NLP模型最小的处理单元，但实际上，它可能不是一个单词或字符，可能是子词(subword)，具体根据不同的Tokenizer确定。常用的Tokenizer：
+- Byte-Pair Encoding (BPE)：通过合并频率最高的字符对逐步构建子词表。
+- WordPiece：BERT使用的分词算法，基于概率模型选择子词。
+
+如果你想要深入了解Tokenizer，推荐
+Andrej Karpathy的视频 [Let's build the GPT Tokenizer](https://www.youtube.com/watch?v=zduSFxRajkE&t=3683s)
+
+### Loss
+经过Transformer后会得到当前序列的输出$output \in \mathbf{R^{b \times t \times d_{model}}}$，还需要经过一个线性层来将序列中的每个元素从$d_{model}$到$d_{vocab_size}$预测是哪个单词：`lm_head = nn.Linear(d_model, vocab_size, bias=False)`，之后经过$softmax$就可以使用交叉熵损失函数(Cross-Entropy Loss)来计算loss了。
+
+另外，对于Decoder-only的Autoregressive模型，它拿到一个输入序列，然后predict next token。所以训练时，pred是input向右位移一位：
+
+```python
+x = torch.stack([torch.from_numpy((data[i:i+ block_size]).astype(np.int64)) for i in indices])
+y = torch.stack([torch.from_numpy((data[i+1: i+1+block_size]).astype(np.int64)) for i in indices])
+```
+然后，计算损失，注意`logits`和`y`的`reshape`操作：
+```python
+# x: (b, t, d_model), y: (b, t, d_model)
+logits = self.lm_head(x) # (b, t, vocab_size)
+b, t, c = logits.shape
+# logits.view(b * t, c) -> y.view(-1) (b * t * c,)
+loss = F.cross_entropy(logits.view(b * t, c), y.view(-1))
+```
+
+### Autogressive inference
+自回归预测需要不断把之前的输出添加回到输入序列，并再次进行注意力计算预测下一个输出：
+```python
+@torch.no_grad()
+def generate(self, input_idx, max_new_tokens, temperature=1.0):
+    "Take a input sequence of indices and complete the sequence."
+    for _ in range(max_new_tokens):
+        idx_cond = input_idx if input_idx.size(1) <= self.block_size else input_idx[:, :self.block_size]
+        logits, _ = self(idx_cond) # transformer model forward
+        logits = logits[:, -1, :] / temperature # (b, c)
+        prob = F.softmax(logits, dim=-1)
+        # idx_next = F.argmax(prob, dim=-1)
+        idx_next = torch.multinomial(prob, num_samples=1) # (b, 1)
+        input_idx = torch.cat((idx_cond, idx_next), dim = 1)
+
+    return input_idx
+```
+为了避免每次添加回去重新的注意力计算，对应的优化方法称为`kv_cache`，后面可以另开新篇展开。
 
 ### Attention intuition
 听说过Transformer的人一定会见到Query, Key, Value这几个东西，为什么Query和Key要想相乘得到相似度后与Value进行加权和？ 如果你也有这样的疑问，可以从下面的内容有一个感性认识，如果只想了解技术部分，这里完全可以跳过。参考资料来自[^1]
