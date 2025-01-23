@@ -3,6 +3,7 @@
 @tailwind utilities;
 
 @layer base {
+
 	:root,
 	:root[data-theme="light"] {
 		color-scheme: light;
@@ -24,4 +25,11 @@
 		--theme-accent-2: 0deg 0% 93%;
 		--theme-quote: 102deg 100% 86%;
 	}
+
+	img {
+		display: block;
+		margin: 0 auto;
+		max-width: 100%;
+	}
+
 }
