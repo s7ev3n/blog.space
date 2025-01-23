@@ -4,7 +4,7 @@ description: "transfomer learning notes and code implementation"
 publishDate: "3 July 2024"
 updatedDate: "18 Jan 2025"
 coverImage:
-  src: "./figs/transformer_components.png"
+  src: "./figs/transformer.svg"
   alt: "Transformer components"
 tags: ["research"]
 draft: false
