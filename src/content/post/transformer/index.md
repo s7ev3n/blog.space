@@ -13,7 +13,7 @@ draft: false
 > Transformer由论文[Attention Is All You Need](https://arxiv.org/abs/1706.03762)提出，开启了AI的Transformer时代，几乎所有的模型都可以见到它的身影。Transformer主要由题图中的三个部分组成：scaled dot-product attention, multi-head attention，transformer encoder-decoder。这篇笔记主要以这三部分为大纲，每个部分会包括模块的解读和代码实现细节。
 
 ## Scaled dot-product attention
-缩放点积注意力(scaled dot-product attention)首先由注意力评分函数建模查询$\mathbf{query}和键$\mathbf{key}$之间的关系，然后将评分值送入$softmax$函数中，得到查询$\mathbf{query}和键$\mathbf{key}$的概率分布(注意力权重)，最后基于注意力权重对值$\mathbf{value}$计算加权，如下图[^1]
+缩放点积注意力(scaled dot-product attention)首先由注意力评分函数建模查询$\mathbf{query}$和键$\mathbf{key}$之间的关系，然后将评分值送入$softmax$函数中，得到查询$\mathbf{query}$和键$\mathbf{key}$的概率分布(注意力权重)，最后基于注意力权重对值$\mathbf{value}$计算加权，如下图[^1]
 
 ![attention-output](./figs/attention-output.svg)
 
@@ -167,7 +167,7 @@ class MultiHeadAttention(nn.Module):
 ![architecture](./figs/transformer_en-de.svg)
 
 ### Positional encoding
-自注意力机制中序列每个$\mathbf{q_i}$和所有$\mathbf{q}$进行attention计算后的输出与$\mathbf{q_i}$在序列中的顺序无关，无法对序列进行建模，因此，需要显式地给每个$\mathbf{q}$向量提供位置信息。位置编码向量是与$\mathbf{q}$向量维度相同的向量，位置编码向量通过公式得到，也可以是可学习位置编码，位置编码与$\mathbf{q}$向量相加，可以将位置信息编码到$\mathbf{q}$向量中。
+自注意力机制中序列每个$\mathbf{q_i}$和所有$\mathbf{q}$进行注意力计算后的输出与$\mathbf{q_i}$在序列中的顺序无关，无法对序列元素之间关系进行建模，因此，需要显式地给每个$\mathbf{q}$向量提供位置信息。位置编码向量是与$\mathbf{q}$向量维度相同的向量，位置编码向量可以通过特定假设编码得到，也可以是可学习位置编码，位置编码与$\mathbf{q}$向量相加，可以将位置信息编码到$\mathbf{q}$向量中。
 
 Transformer中使用的是正弦编码，是一种**绝对位置编码**：假设输入序列$\mathbf{X} \in \mathbb{R}^{n \times d}$是包含$n$个长度为$d$的$\mathbf{q}$向量的矩阵，位置编码使用相同形状的位置嵌入矩阵$\mathbf{P} \in \mathbb{R}^{n \times d}$，并和输入相加得到输出$\mathbf{X} + \mathbf{P}$，矩阵第$i$行(表示序列中的位置)，第$2j$列和第$2j+1$列(表示每个位置的值)的元素为：
 
@@ -182,13 +182,15 @@ $$
 
 ![pe](./figs/pe.png)
 
-
-### `PositionEncoding`的实现
+<details>
+<summary>展开后可见`PositionEncoding`的实现</summary>
+    
 ```python
 class PositionEncoding(nn.Module):
     """Position Encoding.
 
-    Positional encoding will sum with input embedding to give input embedding order.
+    Positional encoding will sum with input embedding to give 
+    input embedding order information.
     Positional encoding is given by the following equation:
     
     PE(pos, 2i)     = sin(pos / (10000 ^ (2i / d_model)))
@@ -197,14 +199,16 @@ class PositionEncoding(nn.Module):
     # where pos is position in sequence and i is index along d_model.
     
     The positional encoding implementation is a matrix of (max_len, d_model), 
-    this matrix is not updated by SGD, it is implemented as a buffer of nn.Module which 
-    is the state of of the nn.Module.
+    this matrix is not updated by SGD, it is implemented as a buffer of 
+    nn.Module which is the state of of the nn.Module.
     
-    Note: For max_len, it usually aligns with the sequence length, do not have to be 1024.
+    Note: For max_len, it usually aligns with the sequence length, 
+    do not have to be 1024.
 
     Detail 1:
-    In addition, we apply dropout to the sums of the embeddings and the positional encodings 
-    in both the encoder and decoder stacks. For the base model, we use a rate of P_drop = 0.1
+    In addition, we apply dropout to the sums of the embeddings and the 
+    positional encodings in both the encoder and decoder stacks. For the 
+    base model, we use a rate of P_drop = 0.1
     """
     def __init__(self, d_model, dropout=0.1, max_len=1024):
         super(PositionEncoding, self).__init__()
@@ -212,7 +216,8 @@ class PositionEncoding(nn.Module):
 
         pe = torch.zeros(max_len, d_model, requires_grad=False)
         pos = torch.arange(0, max_len).unsqueeze(1) # (max_len, 1)
-        demonitor = torch.pow(10000, torch.arange(0, d_model, 2) / d_model) # pos/demonitor is broadcastable
+        demonitor = torch.pow(10000, torch.arange(0, d_model, 2) / d_model) 
+        # pos/demonitor is broadcastable
         
         pe[:, 0::2] = torch.sin(pos / demonitor)
         pe[:, 1::2] = torch.cos(pos / demonitor)
@@ -224,10 +229,12 @@ class PositionEncoding(nn.Module):
         # self.pe[:, :x.size(1)] will return a new tensor, not buffer anymore
         # by default the new tensor's requires_grad is Fasle, but here we refer
         # to The Annotated Transformer, use in_place requires_grad_(False)
-        x = x + self.pe[:, : x.size(1)].requires_grad_(False) # max_len is much longer than t
+        # max_len is much longer than t
+        x = x + self.pe[:, : x.size(1)].requires_grad_(False) 
         return self.dropout(x)
 ```
 
+</details>
 
 ### Encoder
 基本的编码器`Encoder`有两部分：`MHA`模块和`Feedforwad`模块，每个模块都包括一个残差连接`Residual`和`Norm`。其中遇到的第一个细节是`Norm`的位置，一般有两种：`pre-norm`和`post-norm`。`post-norm`是`LayerNorm(x+sublayer(x))`，是原文中所采用的，在后序的工作中，很多情况下被改成了`pre-norm`； `pre-norm`是`x+sublayer(LayerNorm(x))`，即将`Normalization`的位置提前到了`MHA`或`FFN`之前。从下面的`SublayerResidual`实现看`Norm`的位置：
