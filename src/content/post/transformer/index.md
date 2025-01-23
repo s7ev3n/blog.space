@@ -1,12 +1,12 @@
 ---
-title: "Transformer notes"
+title: "Transformer learning notes"
 description: "transfomer learning notes and code implementation"
-publishDate: "18 Jan 2025"
+publishDate: "3 July 2024"
 updatedDate: "18 Jan 2025"
 coverImage:
   src: "./figs/transformer_components.png"
   alt: "Transformer components"
-tags: []
+tags: ["research"]
 draft: false
 ---
 
@@ -23,7 +23,7 @@ $$
 f_{attn}(\mathbf q, \mathbf k) = \frac{\mathbf{q} \mathbf{k}^\top }{\sqrt{d}} \in \mathbb R^{b \times n \times m}
 $$ 
 
-> 为什么要除以$\sqrt{d}$ ? 假设$\mathbf{query}$向量和$\mathbf{key}$向量的所有元素都是独立的随机变量，并且都满足零均值和单位方差，那么两个向量的点积的均值为$0$，方差为$d$。为确保无论向量长度如何，点积的方差在不考虑向量长度的情况下仍然是，我们再将点积除以$\sqrt{d}$[^1]。另外从实际的计算角度看，$\mathbf{query}$向量和$\mathbf{key}$向量的点积值可能会很大，过大的权重影响softmax的输出，使得某些评分值接近1，某些趋近0，使得梯度的计算可能不稳定。
+> 为什么要除以$\sqrt{d}$ ? 假设$\mathbf{query}$向量和$\mathbf{key}$向量的所有元素都是独立的随机变量，并且都满足零均值和单位方差，那么两个向量的点积的均值为$0$，方差为$d$。为确保无论向量长度如何，点积的方差在不考虑向量长度的情况下仍然是，我们再将点积除以$\sqrt{d}$ [^1]。另外从实际的计算角度看，$\mathbf{query}$向量和$\mathbf{key}$向量的点积值可能会很大，过大的权重影响softmax的输出，使得某些评分值接近1，某些趋近0，使得梯度的计算可能不稳定。
 
 $\mathbf{query}$，$\mathbf{key}$和$\mathbf{value}$都是张量的形式，例如 $\mathbf q\in\mathbb R^{b \times n\times d}$，$\mathbf k\in\mathbb R^{b \times m\times d}$，$\mathbf v\in\mathbb R^{b \times m \times v}$，其中$b$代表batchsize，有$n$个查询$\mathbf{query}$，$m$个$\mathbf{key}$和$\mathbf{value}$。
 
@@ -35,8 +35,8 @@ $$
 f_{sda}=\mathrm{softmax}\left(\frac{\mathbf q \mathbf k^\top }{\sqrt{d}}\right) \cdot \mathbf V \in \mathbb{R}^{b \times n\times v}
 $$ 
 
-### attention implementation
-缩放点积注意力`attention`的实现如下代码，代码中包括如何计算加权和的具体例子，另外，其中的`attn_mask`在[masked multi-head attention](#decoder)中更进一步解读。
+### Attention implementation
+缩放点积注意力`attention`的实现如下代码，代码中包括如何计算加权和的具体例子，另外，其中的`attn_mask`在[Masked multi-head attention](#decoder)中更进一步解读。
 
 ```python
 def attention(query, key, value, attn_mask=None, dropout=None):
@@ -93,7 +93,6 @@ def attention(query, key, value, attn_mask=None, dropout=None):
     
     attn = nn.functional.softmax(score, dim=-1)
     if dropout is not None:
-        # TODO: Why dropout here ?
         attn = dropout(attn)
 
     return torch.matmul(attn, value), attn
@@ -101,7 +100,7 @@ def attention(query, key, value, attn_mask=None, dropout=None):
 ```
 
 ## Multi-head attention
-多头注意力(Multi-head attention, MHA)将$\mathbf{query}$，$\mathbf{key}$和$\mathbf{value}$的向量长度$d$切分成更小的几($n_{head}$)组，每组称为一个头，每个头的向量长度是$d=\frac{d_{model}}{n_{head}}$，每个头内**并行**的进行缩放点积注意力计算，并在每个头计算结束后连结(`concat`)起来，再经过一个全连接层后输出，如下图[^1]所示：
+多头注意力(Multi-head attention, MHA)将$\mathbf{query}$，$\mathbf{key}$和$\mathbf{value}$的向量长度$d$切分成更小的几($n_{head}$)组，每组称为一个头，每个头的向量长度是$d=\frac{d_{model}}{n_{head}}$，每个头内**并行**的进行缩放点积注意力计算，并在每个头计算结束后连结(`concat`)起来，再经过一个全连接层后输出，如下图所示：
 
 ![mha](./figs/multi-head-attention.svg)
 
@@ -124,7 +123,7 @@ $$
 其中$n_{head}$是超参数，并且$d_{model}=n_{head}\cdot d_{q}=n_{head}\cdot d_{k}=n_{head}\cdot d_{v}$关系。
 
 ### MHA implementation
-实现MHA时，不必为每个头单独建立单独的全连接层，而是通过整体的矩阵计算，再计算后分到各个头上进行attention计算。下面的实现是Transformer中`self-attention`，其中的$\mathbf{q}$，$\mathbf{k}$和$\mathbf{v}$的向量长度都相同：
+实现`MHA`时，不必为每个头单独建立单独的全连接层，而是通过整体的矩阵计算，再计算后分到各个头上进行注意力计算。下面的实现是Transformer中`self-attention`，其中的$\mathbf{q}$，$\mathbf{k}$和$\mathbf{v}$的向量长度都相同：
 ```python
 class MultiHeadAttention(nn.Module):
     def __init__(self, d_model, n_heads, dropout=0.1):
@@ -161,13 +160,13 @@ class MultiHeadAttention(nn.Module):
 
 ## Transformer architecture
 Transformer原文中提出的是Encoder-decoder的架构，如下图所示。
-`input embedding`在进入编码器`Encoder`前，通过与`Positional Encoding`相加获得位置信息，(<span style="color: gray">Positional Encoding只在这里输入相加一次，与DETR，DETR3D等视觉Transformer不同</span>）。
+`input embedding`在进入编码器`Encoder`前，通过与`Positional Encoding`相加获得位置信息，(<span style="color: gray">Position Encoding只在这里输入相加一次，与DETR，DETR3D等视觉Transformer不同</span>）。
 
-编码器`Encoder`有两部分：注意力`multi-head attention`模块和`Feedforward`模块，每个模块都包括一个残差连接`Residual`，并且这里有一个比较重要的细节是`Norm`的位置，图中所示是`post-norm`，而目前很多实现中使用的是`pre-norm`。
+编码器`Encoder`有两部分：注意力` Multi-head attention`模块和`Feedforward`模块，每个模块都包括一个残差连接`Residual`，并且这里有一个比较重要的细节是`Norm`的位置，图中所示是`post-norm`，而目前很多实现中使用的是`pre-norm`。
 
 解码器`Decoder`和编码器`Encoder`很类似，不同的是在解码`embedding`输入后，使用了`Masked MHA`，即掩码掉未来的信息。
 
-Transformer的base model，使用了$6$层Encoder和$6$层Decoder，$d_{model}=512$，多头注意力的$n_{head}=8$，因此每个头中的$d_q=d_k=d_v=64$，`Feedforward`的线性层是$2048$，以及$p_{drop}=0.1$
+Transformer的`base`版本，使用了$6$层`Encoder`和$6$层`Decoder`，$d_{model}=512$，多头注意力的$n_{head}=8$，因此每个头中的$d_q=d_k=d_v=64$，`Feedforward`的线性层是$2048$，以及$p_{drop}=0.1$
 
 ![architecture](./figs/transformer_en-de.svg)
 
@@ -285,7 +284,7 @@ class SublayerResidual(nn.Module):
 > BatchNorm统计的是batch的信息，而LayerNorm统计的是每个样本的信息；由于Transformer是序列任务，长度可能会经常变换，所以显然LayerNorm不受影响，更适合。同时在Transformer中，LayerNorm会使得训练更稳定。
 
 ### Decoder
-`Decoder`与`Encoder`的区别并不太大，主要的区别是`Decoder`使用掩码自注意力(`Masked MHA`)掩码发生在 `attention` 函数中，将$\mathbf{query}$和$\mathbf{key}$相乘得到的`attention score matrix`根据`attention mask`遮盖掉不需要的`attention score`，前面[`attention`](#attention-implementation)的实现中，有一个`attn_mask`参数，就是这里的掩码。
+`Decoder`与`Encoder`的区别并不太大，主要的区别是`Decoder`使用掩码自注意力(`Masked MHA`)掩码发生在 `attention` 函数中，将$\mathbf{query}$和$\mathbf{key}$相乘得到的`attention score matrix`根据`attention mask`遮盖掉不需要的`attention score`，前面[`attention`](#Attention-implementation)的实现中，有一个`attn_mask`参数，就是这里的掩码。
 
 ```python
 if attn_mask is not None:
@@ -317,7 +316,7 @@ def causal_masking(seq_len):
 
 > **需要注意的是Decoder-only的GPT使用的不是Transformer的Decoder，而是使用casual mask的Encoder！**
 
-## MISC
+## Training and inference
 上面是Transformer主要模块解读和代码实现的细节。为了训练Transformer的NLP任务，还有很多其他内容，在这个章节解读。
 
 ### Embedding
@@ -374,8 +373,14 @@ def generate(self, input_idx, max_new_tokens, temperature=1.0):
 ```
 为了避免每次添加回去重新的注意力计算，对应的优化方法称为`kv_cache`，后面可以另开新篇展开。
 
-### Attention intuition
-听说过Transformer的人一定会见到Query, Key, Value这几个东西，为什么Query和Key要想相乘得到相似度后与Value进行加权和？ 如果你也有这样的疑问，可以从下面的内容有一个感性认识，如果只想了解技术部分，这里完全可以跳过。参考资料来自[^1]
+## Recommended Materials
+本文的材料来自于众多优秀的资料，如本文写作不清楚，推荐阅读原文：
+- [动手深度学习中注意力机制](https://zh.d2l.ai/chapter_attention-mechanisms/index.html) [^1]: 是本文大部分模块讲解和图片的来源
+- [The Annotated Transformer](https://nlp.seas.harvard.edu/annotated-transformer/): 本文的实现参考了这篇优秀的博客
+- Andrej Karpathy的[Let's build GPT: from scratch, in code, spelled out](https://www.youtube.com/watch?v=kCc8FmEb1nY&list=PLAqhIrjkxbuWI23v9cThsA9GvCAUhRvKZ&index=7): 带你从零实现GPT，讲解透彻清晰
+
+## Postscript
+如果你对为什么有Query, Key和Value，以及它们之间的操作叫做注意力等等有疑问，可以参考下面的内容，解读来自于[^1]。
 
 心理学中威廉·詹姆斯提出了双组件(two-component)框架：受试者基于**自主性提示**和**非自主性提示**有选择的引导注意力的焦点。自主性提示就是人主观的想要关注的提示，而非自主性提示是基于环境中物体的突出性和易见性。举一个下面的例子：
 
