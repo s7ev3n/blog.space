@@ -6,7 +6,7 @@ updatedDate: "18 Jan 2025"
 coverImage:
   src: "./figs/transformer.svg"
   alt: "Transformer components"
-tags: ["research"]
+tags: ["tech/transformer"]
 draft: false
 ---
 
@@ -23,7 +23,7 @@ $$
 f_{attn}(\mathbf q, \mathbf k) = \frac{\mathbf{q} \mathbf{k}^\top }{\sqrt{d}} \in \mathbb R^{b \times n \times m}
 $$ 
 
-> 为什么要除以$\sqrt{d}$ ? 假设$\mathbf{query}$向量和$\mathbf{key}$向量的所有元素都是独立的随机变量，并且都满足零均值和单位方差，那么两个向量的点积的均值为$0$，方差为$d$。为确保无论向量长度如何，点积的方差在不考虑向量长度的情况下仍然是，我们再将点积除以$\sqrt{d}$ [^1]。另外从实际的计算角度看，$\mathbf{query}$向量和$\mathbf{key}$向量的点积值可能会很大，过大的权重影响softmax的输出，使得某些评分值接近1，某些趋近0，使得梯度的计算可能不稳定。
+> 为什么要除以$\sqrt{d}$ ? 假设$\mathbf{query}$向量和$\mathbf{key}$向量的所有元素都是独立的随机变量，并且都满足零均值和单位方差，那么两个向量的点积的均值为$0$，方差为$d$。为确保无论向量长度如何，点积后的方差在不考虑向量长度的情况下仍然是单位方差，我们再将点积除以$\sqrt{d}$ [^1]。另外从实际的计算角度看，$\mathbf{query}$向量和$\mathbf{key}$向量的点积值可能会很大，过大的权重影响softmax的输出，使得某些评分值接近1，某些趋近0，使得梯度的计算可能不稳定。
 
 $\mathbf{query}$，$\mathbf{key}$和$\mathbf{value}$都是张量的形式，例如 $\mathbf q\in\mathbb R^{b \times n\times d}$，$\mathbf k\in\mathbb R^{b \times m\times d}$，$\mathbf v\in\mathbb R^{b \times m \times v}$，其中$b$代表batchsize，有$n$个查询$\mathbf{query}$，$m$个$\mathbf{key}$和$\mathbf{value}$。
 
