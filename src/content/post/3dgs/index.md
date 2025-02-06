@@ -6,7 +6,7 @@ updatedDate: "18 Jan 2025"
 coverImage:
   src: "./figs/3dgs_pipeline.svg"
   alt: "3DGS pipeline"
-tags: ["research"]
+tags: ["tech/simulation"]
 draft: false
 ---
 
@@ -79,30 +79,50 @@ $$
 **雅可比矩阵描述了向量值函数在某一点附近的局部线性变换**，通俗的说，雅可比矩阵在某可微点的很小的邻域范围内提供了向量值函数的近似**线性**表示(一阶泰勒展开)，可视化理解几何意义参考[这个视频](https://www.youtube.com/watch?v=bohL918kXQk)。在3D Gaussian投影过程中会遇到这个知识点。
 
 多说一句向量值函数 $\mathbf{f}(\mathbf{x})=(f_1(\mathbf{x}), f_2(\mathbf{x}), ..., f_m(\mathbf{x}))$是输出值为向量的函数，其输入可以是一个标量或者向量。
-
-举一个例子说明：假设有一个粒子在三维空间中运动，其位置随时间$t$变化，我们可以用一个向量值函数来描述这个粒子的位置：
+举一个例子说明，假设有一个粒子在三维空间中运动，其位置随时间$t$变化，我们可以用一个向量值函数来描述这个粒子的位置：
 $$\mathbf{r}(t)=\langle f(t), g(t), h(t) \rangle$$
 其中，$f(t), g(t), h(t)$分别是例子在$x$轴，$y$轴和$z$轴上的变化。则$\mathbf{r}(t)$是一个向量值函数，输入是时间$t$，输出是三维的例子位置。
 
 
-## 3D Gaussians
+## 3D Gaussian Representation
 
-### 3D Gaussians Representation
+三维空间有很多形式，例如显式的栅格化Voxel，或者隐式的Neural Radiance。3D Gaussian也是一种对三维空间的表征，用大量的3D Gaussians来更自由、更紧凑(相对于稠密、规则的Voxel)的表征三维空间。3D Gaussians的参数 ($\mathbf{\mu}$和$\mathbf{\Sigma}$) 构成了模型的**权重参数**之一，将三维场景的信息(通过训练)“压缩”到的模型参数中去，可以用于新视角生成，也可以有更灵活的用途，甚至是自动驾驶的感知任务[^2]。3D Gaussians的表征也可以使用并行化实现高效的渲染。
 
-### 3D Gaussians Pipeline
+[^2]: [GaussianFormer: Scene as Gaussians for Vision-Based 3D Semantic Occupancy Prediction](https://arxiv.org/abs/2405.17429)
+
+具体来说，3D Gaussian表征是一组定义在**世界坐标系下**的参数，包含：三维位置(3D position)，协方差(anisotropic covariance)，不透明度(opacity $\alpha$)和球谐函数(spherical harmonic, SH)：
+- 3D位置是三维高斯分布的均值$\mathbf{\mu}$，有3个值
+- 协方差是三维高斯分布的$\mathbf{\Sigma}$，可以拆分成主对角线元素3个值和表示三维旋转的四元数4个值，后面会更详细讲解
+- 不透明度(opacity $\alpha$)，是一个标量值，用于$\alpha -$blending
+- 球谐函数用来表示辐射神经场的带方向的颜色
 
 ## The Gaussian Rasterizer
+3D Gaussians是定义在世界坐标系下的对三维空间的连续表征，需要进行[栅格化](#rasterization-删格化)渲染到离散空间的图片上。这里涉及到3D Gaussian的投影和渲染。
+
+### 3D Gaussian Splatting
+3D Gaussian的位置(均值$\mathbf{\mu}$)正常使用点的投影矩阵即可，但是3D Gaussians是三维空间中的椭球形状如何投影到图像平面，协方差矩阵决定了三维椭球的大小和方向，因此协方差矩阵通过线性/仿射变化投影到图像平面是关键，论文中使用如下公式近似投影协方差矩阵到图像空间：
+$$
+\Sigma'=JW\Sigma W^{\top}J^{\top}
+$$
+
+其中，$W$是世界坐标系到图像平面的投影矩阵，而$J$是投影矩阵的雅可比矩阵。
+
+更实际的公式是下面的公式，
+$$
+\Sigma_{2D}=JR\Sigma_{3D}R^{\top}J^{\top}
+$$
+其中，$R$是世界坐标系到图像平面的旋转部分(矩阵)。
+
+> 为什么投影矩阵实际中只有旋转部分没有平移部分？
 
 ### $\alpha -$blending
 
-### 3D Gaussian Splatting
-
 ## Optimization
+
+### 3D Gaussian Splatting Pipeline
 
 ### Adaptive Control
 
 ### 3D Gaussian Initailization
 
 ## Tile-based Rasterizer
-
-## Further Reading
