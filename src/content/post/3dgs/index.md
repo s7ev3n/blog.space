@@ -10,7 +10,7 @@ tags: ["research"]
 draft: false
 ---
 
-> 3D Gaussian Splatting(3DGS)由2023年论文[3D Gaussian Splatting for Real-Time Radiance Field Rendering](https://arxiv.org/abs/2308.04079)中提出，由于渲染速度快且质量高，迅速超越(NeRF)称为新视角渲染的热点，涌现出大量优秀的后续工作。本篇笔记以论文原文和原作者的[教程](https://3dgstutorial.github.io/3dv_part1.pdf)为基础，包括简单的渲染代码实现，训练时关键参数的初始化等，不包括模型的训练(原代码全部是CUDA写的，看懂需要大量相关知识)。
+> 3D Gaussian Splatting(3DGS)由2023年论文[3D Gaussian Splatting for Real-Time Radiance Field Rendering](https://arxiv.org/abs/2308.04079)中提出，由于渲染速度快且质量高，迅速超越(NeRF)称为新视角渲染的热点，涌现出大量优秀的后续工作。本篇笔记以论文原文和原作者的[教程](https://3dgstutorial.github.io/3dv_part1.pdf)为基础，包括简单的渲染代码实现，训练时关键参数的初始化等，不包括模型的训练代码。
 
 ## Background
 如果不了解图形学以及忘记一些基础知识，这里进行简单的介绍。
@@ -65,4 +65,26 @@ $$
 
 如果见到$\mathbf{z}A\mathbf{z}^\top$，它是什么？有两种可能：1）$\mathbf{z}$是行向量，那么其实和$\mathbf{z}^\top \mathbf{A} \mathbf{z}$是等价的；2）$\mathbf{z}$可能是一个矩阵，那么上面式子只是矩阵相乘了。
 
+### Jacobian Matrix (雅可比矩阵)
 
+## 3D Gaussians
+
+### 3D Gaussians Representation
+
+### 3D Gaussians Pipeline
+
+## The Gaussian Rasterizer
+
+### $\alpha -$blending
+
+### 3D Gaussian Splatting
+
+## Optimization
+
+### Adaptive Control
+
+### 3D Gaussian Initailization
+
+## Tile-based Rasterizer
+
+## Further Reading
