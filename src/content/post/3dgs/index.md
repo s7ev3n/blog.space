@@ -111,34 +111,71 @@ $$\mathbf{r}(t)=\langle f(t), g(t), h(t) \rangle$$
 ## 3D Gaussian Rasterizer
 3D Gaussians是定义在世界坐标系下的对三维空间的连续表征，需要进行[栅格化](#rasterization)渲染到离散空间的图片上。这里涉及到3D Gaussian的投影和渲染。
 
-### 3D Gaussian Splatting
-3D Gaussian的位置(均值$\mathbf{\mu}$)正常使用点的投影矩阵即可，但是3D Gaussians是三维空间中的椭球形状如何投影到相机坐标系，协方差矩阵决定了三维椭球的大小和方向，因此协方差矩阵通过线性/仿射变化投影到相机坐标系是关键，论文中使用如下公式近似投影协方差矩阵：
+### 3D Covariance Splatting
+3D Gaussian的位置(均值$\mathbf{\mu}$)投影到图像平面正常使用投影矩阵即可，但是3D Gaussians是三维空间中的椭球形状如何投影到图像平面，协方差矩阵决定了三维椭球的大小和方向，因此协方差矩阵的投影是关键，论文中使用如下公式近似投影协方差矩阵：
 $$
 \Sigma'=JW\Sigma W^{\top}J^{\top}
 $$
-其中，$W$是世界坐标系到相机坐标系的投影矩阵，而$J$是投影矩阵的雅可比矩阵。
+其中，$W$是世界坐标系到相机坐标系的变换矩阵（transformation matrix），而$J$是投影变换(projective  transformation)的雅可比矩阵。
 
-我们简单推导下上面协方差投影矩阵的获得。假设存在一个线性变换$\mathbf{A}$，空间中的高斯分布$\mathbf{x} \sim \mathcal{N}(\mathbf{\mu}, \mathbf{\Sigma})$经过线性变换$\mathbf{A}$后，新的分布$\mathbf{y} \sim \mathcal{N}(\mathbf{A\mu}, \mathbf{A\Sigma A^\top})$，注意观察协方差矩阵的变化。但是透视投影变换是非线性的，直接计算非线性变换后的协方差矩阵是困难的，因此使用雅可比矩阵进行线性近似。更详细的推导需要阅读论文[^3]。
+:::note
+一般说投影(projective)矩阵，指的是三维空间中的点到二维图像平面的投影，它可以包括两部分：世界坐标系到相机坐标系变换，以及相机坐标系到图像平面的投影。如果只包含相机坐标系到图像坐标系的投影，也可以称作投影矩阵。
+:::
 
+:::note
+我们简单推导下上面协方差投影矩阵的基本原理。假设存在一个线性变换$\mathbf{A}$，空间中的高斯分布$\mathbf{x} \sim \mathcal{N}(\mathbf{\mu}, \mathbf{\Sigma})$经过线性变换$\mathbf{A}$后，新的分布$\mathbf{y} \sim \mathcal{N}(\mathbf{A\mu}, \mathbf{A\Sigma A^\top})$，注意观察新的协方差矩阵与上面协方差投影公式的相似性。
+:::
+
+三维空间的点从世界坐标系到相机坐标系的变换矩阵是仿射变换，包含旋转矩阵(线性变换)和平移矩阵，因此可以直接使用针对线性变换的协方差矩阵投影。但是**透视投影变换是非线性的**，不能使用相机内参$\mathbf{K}$直接投影到相机平面，因此使用雅可比矩阵对投影变换进行线性近似。
+
+雅可比矩阵提供某个可微点处的线性近似，哪具体是哪个点呢？实现中使用3D Gaussian的均值(mean)变换到相机坐标系后，进行雅可比矩阵的计算（更详细的推导需要阅读论文[^3]）：
+```python
+def compute_Jocobian(self, mean3d_N3):
+    '''
+    Compute the Jacobian of the affine approximation of the projective transformation.
+    '''
+    t = self.camera.world_to_camera(mean3d_N3)
+    l = np.linalg.norm(t, axis=1, keepdims=True).flatten()
+    # Compute the jacobian according to (29) from EWA Volume Splatting M.Zwicker et. al (2001)
+    jacobian = np.zeros((t.shape[0], 3, 3))
+    jacobian[:, 0, 0] = 1/t[:, 2]
+    jacobian[:, 0, 2] = -t[:, 0]/t[:, 2]**2
+    jacobian[:, 1, 1] = 1/t[:, 2]
+    jacobian[:, 1, 2] = -t[:, 1]/t[:, 2]**2
+    jacobian[:, 2, 0] = t[:, 0]/l
+    jacobian[:, 2, 1] = t[:, 1]/l
+    jacobian[:, 2, 2] = t[:, 2]/l
+
+    return jacobian
+```
 [^3]: [Surface Splatting](https://dl.acm.org/doi/10.1145/383259.383300)
 
 实际实现使用的是下面的公式：
 $$
 \Sigma_{2D}=JR\Sigma_{3D}R^{\top}J^{\top}
 $$
-其中，$R$是世界坐标系到相机坐标系面的旋转部分(矩阵)。
+其中，$R$是世界坐标系到相机坐标系面的旋转矩阵。
 
 :::note
 为什么从世界坐标系到图像平面的透视变换投影矩阵不是线性变换？投影矩阵如下：
 $$
 \begin{bmatrix} \mu \\ \nu \\ 1 \\ \end{bmatrix} = \frac{1}{Z_c}K \begin{bmatrix} X_c \\ Y_c \\ Z_c \\ \end{bmatrix}
 $$
-线性变换对**加法和数乘法封闭**，投影矩阵中引入了除法，使得**投影矩阵是非线性变换**。
+线性变换对**加法**和**数乘法封闭**，投影矩阵中引入了除法，使得**投影矩阵是非线性变换**。
 :::
 
 :::note
 为什么投影矩阵实际中只有旋转部分没有平移部分？从[多元高斯分布经过线性变换后的协方差矩阵推导](#multivariate-gaussian-distribution)可知，平移对于协方差没有影响。
 :::
+
+### Covariance in practice
+协方差矩阵的重要性质是对称矩阵和半正定，如果协方差矩阵作为模型参数进行梯度更新，那么很容易不满足协方差矩阵的性质。因此实际中，依靠协方差矩阵的几何意义，使用更直观的方式来近似表示协方差矩阵。
+
+由于协方差矩阵的几何意义中对角线元素代表方差，即三维椭球大小（高矮胖瘦），非对角线元素代表旋转，因此将协方差矩阵拆分为表示大小的对角矩阵$S$和表示旋转的旋转矩阵$R$:
+$$
+\Sigma=RSS^\top R^\top
+$$
+实现中，使用一个$3$维向量$s$表示对角矩阵的元素，使用$4$维向量$q$表示四元数，即$7$个值表示协方差矩阵。
 
 ### alpha-blending
 
