@@ -3,9 +3,6 @@ title: "3D Gaussian Splatting notes"
 description: "3dgs learning notes"
 publishDate: "3 Dec 2024"
 updatedDate: "18 Jan 2025"
-coverImage:
-  src: "./figs/3dgs_pipeline.svg"
-  alt: "3DGS pipeline"
 tags: ["tech/simulation"]
 draft: false
 ---
@@ -96,16 +93,28 @@ $$
 $$\mathbf{r}(t)=\langle f(t), g(t), h(t) \rangle$$
 其中，$f(t), g(t), h(t)$分别是例子在$x$轴，$y$轴和$z$轴上的变化。则$\mathbf{r}(t)$是一个向量值函数，输入是时间$t$，输出是三维的例子位置。
 
+### alpha-blending
+$\alpha$-blending又称为透明度混合，用于将两个或多个图像以一定的透明度混合在一起，从而创建出具有半透明效果的图像。
+$\alpha$-blending的核心在于通过透明度值（$\alpha$值）来控制图像的混合程度。$\alpha$值的范围是$[0,1]$，其中：
+- $0$ 表示完全透明，混合后的图像将完全显示背景图像
+- $1$ 表示完全不透明，混合后的图像将完全显示前景图像
+
+例如，对于两个图像层（前景图像$A$和背景图像$B$），混合后的图像$C$可以通过以下公式计算：
+$$
+C = \alpha A + (1-\alpha)B
+$$
+其中，图像$A,B,C \in \mathbb{R}^{H\times W \times3}$。可知每个像素值都需要混合，得到的$\alpha$是一个与图像大小相同的矩阵。
+
 ## 3D Gaussian Representation
 
-三维空间有很多形式，例如显式的栅格化Voxel，或者隐式的Neural Radiance。3D Gaussian也是一种对三维空间的表征，用大量的3D Gaussians来更自由、更紧凑(相对于稠密、规则的Voxel)的表征三维空间。3D Gaussians的参数 ($\mathbf{\mu}$和$\mathbf{\Sigma}$) 构成了模型的**权重参数**之一，将三维场景的信息(通过训练)“压缩”到的模型参数中去(即3DGS模型的权重就是这些3D Gaussians参数)，可以用于新视角生成，也可以有更灵活的用途，甚至是自动驾驶的感知任务[^2]。3D Gaussians的表征也可以使用并行化实现高效的渲染。
+三维空间有很多形式，例如显式的栅格化体素Voxel，或者隐式的Neural Radiance。3D Gaussian也是一种对三维空间的表征，用大量的3D Gaussians来更自由、更紧凑(相对于稠密、规则的Voxel)的表征三维空间。3D Gaussians的参数 ($\mathbf{\mu}$和$\mathbf{\Sigma}$) 构成了模型的**权重参数**之一，将三维场景的信息(通过训练)“压缩”到的模型参数中去(即3DGS模型的权重就是这些3D Gaussians参数)，可以用于新视角生成，也可以有更灵活的用途，甚至是自动驾驶的感知任务[^2]。3D Gaussians的表征也可以使用并行化实现高效的渲染。
 
 [^2]: [GaussianFormer: Scene as Gaussians for Vision-Based 3D Semantic Occupancy Prediction](https://arxiv.org/abs/2405.17429)
 
-具体来说，3D Gaussian表征是一组定义在**世界坐标系下**的参数，包含：三维位置(3D position)，协方差(anisotropic covariance)，不透明度(opacity $\alpha$)和球谐函数(spherical harmonic, SH)：
+具体来说，3D Gaussian表征是一组定义在**世界坐标系下**的参数，包含：三维位置(3D position)，协方差(anisotropic covariance)，**不**透明度(opacity $\alpha$)和球谐函数(spherical harmonic, SH)：
 - 3D位置是三维高斯分布的均值$\mathbf{\mu}$，有3个值
-- 协方差是三维高斯分布的$\mathbf{\Sigma}$，可以拆分成主对角线元素3个值和表示三维旋转的四元数4个值，后面会更详细讲解
-- 不透明度(opacity $\alpha$)，是一个标量值，用于$\alpha -$blending
+- 协方差是三维高斯分布的$\mathbf{\Sigma}$，可以拆分成主对角线元素$3$个值和表示三维旋转的四元数$4$个值，[后面](#covariance-in-practice)会更详细讲解
+- 不透明度(opacity)，是一个标量值，用于$\alpha -$blending
 - 球谐函数用来表示辐射神经场的带方向的颜色
 
 ## 3D Gaussian Rasterizer
@@ -118,11 +127,11 @@ $$
 $$
 其中，$W$是世界坐标系到相机坐标系的变换矩阵（transformation matrix），而$J$是投影变换(projective  transformation)的雅可比矩阵。
 
-:::note
+:::tip
 一般说投影(projective)矩阵，指的是三维空间中的点到二维图像平面的投影，它可以包括两部分：世界坐标系到相机坐标系变换，以及相机坐标系到图像平面的投影。如果只包含相机坐标系到图像坐标系的投影，也可以称作投影矩阵。
 :::
 
-:::note
+:::tip
 我们简单推导下上面协方差投影矩阵的基本原理。假设存在一个线性变换$\mathbf{A}$，空间中的高斯分布$\mathbf{x} \sim \mathcal{N}(\mathbf{\mu}, \mathbf{\Sigma})$经过线性变换$\mathbf{A}$后，新的分布$\mathbf{y} \sim \mathcal{N}(\mathbf{A\mu}, \mathbf{A\Sigma A^\top})$，注意观察新的协方差矩阵与上面协方差投影公式的相似性。
 :::
 
@@ -156,7 +165,7 @@ $$
 $$
 其中，$R$是世界坐标系到相机坐标系面的旋转矩阵。
 
-:::note
+:::tip
 为什么从世界坐标系到图像平面的透视变换投影矩阵不是线性变换？投影矩阵如下：
 $$
 \begin{bmatrix} \mu \\ \nu \\ 1 \\ \end{bmatrix} = \frac{1}{Z_c}K \begin{bmatrix} X_c \\ Y_c \\ Z_c \\ \end{bmatrix}
@@ -177,11 +186,48 @@ $$
 $$
 实现中，使用一个$3$维向量$s$表示对角矩阵的元素，使用$4$维向量$q$表示四元数，即$7$个值表示协方差矩阵。
 
-### alpha-blending
+### Rendering
+:::tip
+可微分渲染(**differentiable** rendering)指的是用于渲染的参数是模型梯度更新的参数，3DGS属于可微分渲染。
+:::
+
+3DGS使用$\alpha$-blending来近似体积渲染(volumetric rendering)公式:
+$$
+C(x) = \sum_{i \in \mathcal{N}}c_{i}\alpha_{i}(x)T_i(x)
+$$
+其中，$i$是Gaussian的下标，$c_i$是该Gaussian的颜色，透明度$\alpha_{i}=(1-exp(-\sigma_i\delta_i))$，其中$\sigma$表示粒子密度，$\delta_i$是光线(ray)上的一段距离；$T_i$被称为透光率(Transmittance):$T_i(x) = \prod_{j=1}^{i-1}(1-\alpha_{j}(x))$，即通过从$j=1$到前一个$i-1$连乘$1-\alpha$得到。
+
+:::note
+到这里你可能有些乱，3DGS参数中是不透明度opacity，这里是透明度$\alpha$和复杂的定义，以及又出现了透光率Transmittance。
+
+首先，opacity和$\alpha$在含义上是相同的，$\alpha$是前景颜色的控制量，即当前3D Gaussian颜色对像素的贡献，和不透明度的含义是一致的。
+
+$\alpha$的复杂定义源于透光率Transmittance的物理意义。透光率定义为光线穿过微小圆柱体内某粒子群的出射光线强度与入射光线强度的比值：
+$$
+T = \frac{I_{out}}{I_{in}} = exp(-\int_{a}^{b} \sigma(t) d(t))
+$$
+透光率Transmittance表示光线穿过某一区域的**透明度**(和$\alpha$表示的含义是相反的)，透光率$T$越大，表示出射光线基本没有衰减，进而表示这个区域的粒子密度很小，即透明度越高，如果为$0$，则说明完全不透光，即不透明。
+:::
+
+**如何计算$\alpha$?**，原文中的表述是：$\alpha$ is given by evaluating a 2D Gaussian with covariance $\Sigma_{2D}$ multiplied with a learned per-point opacity。翻译成代码更好理解：
+```python
+def _compute_alpha(self, opacity, xmean2d_20, cov2d_22):
+    x_HW2 = self.camera.grids # 图像像素中心点
+    d_HW2 = x_HW2-xmean2d_20[None, None,...] # 图像像素中心点与该gaussian位置的距离
+    alpha_1HW = opacity[None, None, ...] * np.exp(-0.5 * d_HW2[..., None, :] @ np.linalg.inv(cov2d_22) @ d_HW2[..., None]).squeeze()
+    return alpha_1HW
+```
+··
+:::important
+如果对$\alpha$-blending的公式依然有很多疑问，需要看体积渲染(volumetric rendering)的理论推导部分（数学公式偏多，可以试着推导一下），推荐下面两个材料：
+- [基础知识-体渲染 (Volume Rendering)](https://zhuanlan.zhihu.com/p/639892534)
+- [Volume Rendering](https://www.scratchapixel.com/lessons/3d-basic-rendering/volume-rendering-for-developers/volume-rendering-summary-equations.html)，上面中文版的英文来源
+:::
 
 ## Optimization
 
 ### 3D Gaussian Splatting Pipeline
+![3dgs pipeline](./figs/3dgs_pipeline.svg)
 
 ### Adaptive Control
 
