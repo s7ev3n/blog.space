@@ -6,12 +6,50 @@ updatedDate: "4 Jan 2025"
 tags: ["tech/transformer"]
 draft: false
 ---
-> Position Encoding是Transformer重要组成部分，通过对输入序列的位置进行编码，使模型有能力分辨不同位置的能力，主要有**绝对位置编码**和**相对位置编码**。本文是对苏神的[Transformer升级之路系列](https://spaces.ac.cn/archives/8231)[^1][^2]的个人笔记以及RoPE编码的学习。
+> Position Encoding是[Transformer](https://www.s7ev3n.space/posts/transformer/)重要组成部分，输入序列通过加入对输入位置编码后的信息，使模型有能力分辨不同位置的能力，主要有**绝对位置编码**和**相对位置编码**。本文是对苏神的[Transformer升级之路系列](https://spaces.ac.cn/archives/8231)[^1][^3]的个人笔记以及RoPE编码[^2]的学习。
 
 [^1]: [Transformer升级之路1](https://spaces.ac.cn/archives/8231)
 [^2]: [Transformer升级之路2](https://kexue.fm/archives/8265)
 [^3]: [让研究人员绞尽脑汁的Transformer位置编码](https://kexue.fm/archives/8130)
 [^4]: [层次分解位置编码，让BERT可以处理超长文本](https://kexue.fm/archives/7947)
+
+## How PE work
+位置编码的目的很好理解：由于注意力attention的操作是不区分位置的，因此我们需要让模型知道，例如这是第几个词（绝对位置），这个词和另一个词的距离（相对位置）。
+
+> 知道了Why，另一个问题是How，PE是如何给输入序列注入位置信息的？以三角函数位置编码为例，为什么相加就赋予了Embedding位置信息了？
+
+回顾一下Transformer中默认的三角函数(Sinusoidal)位置编码，论文中公式：
+$$
+\begin{equation}\left\{\begin{aligned}&\boldsymbol{p}_{k,2i}=\sin\Big(k/10000^{2i/d}\Big)\\ 
+&\boldsymbol{p}_{k, 2i+1}=\cos\Big(k/10000^{2i/d}\Big) 
+\end{aligned}\right.\end{equation}
+$$
+其中，$p_{k,2i},p_{k,2i+1}$分别是序列中位置$k$处的、在`embed_dim`上的$2i,2i+1$的位置，$d$是`embed_dim`的大小。
+
+换一种形式可以看到，每个对$k$位置的位置编码向量的每个值的奇偶位是$\sin$和$\cos$交替变换:
+$$
+\boldsymbol{p}_{k} = \begin{bmatrix} 
+\sin({\omega_1} \cdot k)\\ 
+\cos({\omega_1} \cdot k)\\ 
+\\
+\sin({\omega_2} \cdot k)\\ 
+\cos({\omega_2} \cdot k)\\ 
+\\
+\vdots\\ 
+\\
+\sin({\omega_{d/2}} \cdot k)\\ 
+\cos({\omega_{d/2}} \cdot k) 
+\end{bmatrix}
+$$
+其中，$\omega_k = \frac{1}{10000^{2i / d}}$。
+
+**问题是为什么上式赋予了Embedding位置信息？**
+
+我们先回到问题的原点，如果想要给某个序列添加位置信息，这个位置信息是什么样子的呢？
+有一些选项：
+- 例如$[0,1]$区间分别代表序列中第一个位置和最后一个位置，但是缺点是如果序列长度变化，不能保证，每个绝对位置上的值不变
+- 或者，可以把位置这个数字直接给到序列，即$1,2,...,n$，但是缺点是序列的位置会变得很大，如果序列非常长的话
+
 
 ## Absolute and Relative PE
 ### 绝对位置编码
@@ -21,13 +59,6 @@ draft: false
 相对于相对位置编码，绝对位置编码的优点是计算复杂度更低。
 
 #### 三角函数(Sinusoidal)
-三角函数(Sinusoidal)是Transformer论文中默认的位置编码，回顾一下：
-$$
-\begin{equation}\left\{\begin{aligned}&\boldsymbol{p}_{k,2i}=\sin\Big(k/10000^{2i/d}\Big)\\ 
-&\boldsymbol{p}_{k, 2i+1}=\cos\Big(k/10000^{2i/d}\Big) 
-\end{aligned}\right.\end{equation}
-$$
-其中，$p_{k,2i},p_{k,2i+1}$分别是序列中位置$k$处的、在`embed_dim`上的$2i,2i+1$的位置，$d$是`embed_dim`的大小。
 
 在[Transformer](https://www.s7ev3n.space/posts/transformer/)文中，我们知道Sinusocidal位置编码在`embed_sim`后面接近于$0$和$1$间隔的编码，因此可以期望它有一定的**外推性**。
 
@@ -95,4 +126,8 @@ $\boldsymbol{p}_K$和$\boldsymbol{p}_V$是**可以是可训练式活三角函数
 ## 旋转式位置编码
 "一般来说，绝对位置编码具有实现简单、计算速度快等优点，而相对位置编码则直接地体现了相对位置信号，跟我们的直观理解吻合，实际性能往往也更好。由此可见，如果可以通过绝对位置编码的方式实现相对位置编码，那么就是集各家之所长。"
 
-旋转式位置编码，英文是Rotary Position Embeddin (RoPE) 是一种“绝对位置编码的方式实现相对位置编码”的设计[^2]。
+旋转式位置编码，英文是Rotary Position Embedding (RoPE) 是一种“绝对位置编码的方式实现相对位置编码”的设计[^2]，简单说来RoPE利用向量的内积的复数形式，使得绝对位置编码的方式中内含对相对位置的依赖。
+
+:::note
+将向量表示为复数形式时，通常使用极坐标的形式$re^{i\theta}$，其中$r$是向量的模，$\theta$是向量与$x$轴正方向的夹脚，
+:::
