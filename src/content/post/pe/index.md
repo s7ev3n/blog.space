@@ -13,15 +13,15 @@ draft: false
 [^3]: [让研究人员绞尽脑汁的Transformer位置编码](https://kexue.fm/archives/8130)
 [^4]: [层次分解位置编码，让BERT可以处理超长文本](https://kexue.fm/archives/7947)
 
-## How PE work
-位置编码的目的很好理解：由于自注意力attention的操作是不区分位置的，因此我们需要让模型知道，例如这是第几个词（绝对位置），这个词和另一个词的距离（相对位置）。
+## Sinusoidal PE in the details
+位置编码在Transformer原文中的戏份并不多，主要目的是由于自注意力attention的操作是不区分位置的，因此我们需要让模型知道，例如这是第几个词（绝对位置），这个词和另一个词的距离（相对位置）。
 
-有两个问题对理解位置编码很重要：
+虽然知道三角函数位置编码的具体公式和代码，但是很多细节和设计理由并没有深究，比较简单的两个问题是：
 - **位置编码是如何给输入序列注入位置信息的？**
 - **为什么相加就赋予了输入Embedding序列位置信息了？**
 
 ### Unique Position Encoding
-回顾一下Transformer中默认的三角函数位置编码，论文中公式：
+回顾一下三角函数位置编码：
 $$
 \begin{equation}\left\{\begin{aligned}\boldsymbol{p}_{k,2i}&=\sin\Big(k/10000^{2i/d}\Big)\\ 
 \boldsymbol{p}_{k, 2i+1}&=\cos\Big(k/10000^{2i/d}\Big) 
@@ -31,6 +31,7 @@ $$
 
 换一种形式可以看到，每个对序列$k$位置的位置编码向量$\boldsymbol{p}_{k}$每个值在奇偶位是$\sin$和$\cos$交替变换:
 $$
+\begin{equation}
 \boldsymbol{p}_{k} = \begin{bmatrix} 
 \sin({\omega_0} \cdot k)\\ 
 \cos({\omega_0} \cdot k)\\ 
@@ -43,10 +44,11 @@ $$
 \sin({\omega_{\frac{d}{2}-1}} \cdot k)\\ 
 \cos({\omega_{\frac{d}{2}-1}} \cdot k) 
 \end{bmatrix}
+\end{equation}
 $$
-其中，$\omega_i = \frac{1}{10000^{2i / d}}$，请记住这里奇数和偶数位分别是频率相同的$\sin$和$\cos$组成的一对，后面的RoPE会使用这一个二维向量举例。
+其中，$\omega_i = \frac{1}{10000^{2i / d}}$，请记住这里**奇数和偶数位分别是频率相同的$\sin$和$\cos$组成的一对**，后面的RoPE会使用这一个二维向量举例。
 
-**为什么上式赋予了Embedding位置信息？**
+> **为什么上式赋予了Embedding位置信息？**
 
 我们先回到问题的原点，如果想要给某个序列添加位置信息，这个位置信息是什么样子的呢？
 有一些选项：
@@ -54,10 +56,12 @@ $$
 - 或者，可以把位置这个数字直接给到序列，即$1,2,...,n$，但是缺点是序列的位置会变得很大，如果序列非常长的话
 
 总结起来，给序列提供位置信息需要的性质：
-- 每个序列位置编码应该是唯一的标识，最好是序列位置$k$的函数
-- 必须是确定性的，不能对不同的序列长度，位置编码是不同的
+- 每个序列位置的位置编码应该是唯一的
+- 必须是确定性的，是序列位置$k$的确定性函数，不能对不同的序列长度，位置编码是不同的
 
-**给每个序列中的位置提供唯一的位置编码信息，就为输入序列注入了位置信息。**
+:::important
+**给每个序列中的位置提供唯一的位置编码信息，如此就为输入序列注入了位置信息。**
+:::
 
 很多文章使用二进制的数字来表示整型的位置[^5]举例对三角函数编码交替进行比较，例如:
 $$
@@ -128,21 +132,44 @@ $$
 
 $$
 \boldsymbol{T}^{(\Delta d)} = \begin{bmatrix}
-\boldsymbol{\Phi}^{(\Delta d)}_1 & \boldsymbol{0} & \cdots & \boldsymbol{0} \\
-\boldsymbol{0} & \boldsymbol{\Phi}^{(\Delta d)}_2 & \cdots & \boldsymbol{0} \\
+\boldsymbol{\Phi}^{(\Delta d)}_0 & \boldsymbol{0} & \cdots & \boldsymbol{0} \\
+\boldsymbol{0} & \boldsymbol{\Phi}^{(\Delta d)}_1 & \cdots & \boldsymbol{0} \\
 \boldsymbol{0} & \boldsymbol{0} & \ddots & \boldsymbol{0} \\
 \boldsymbol{0} & \boldsymbol{0} & \cdots & \boldsymbol{\Phi}^{(\Delta d)}_{\frac{d}{2}-1}
 \end{bmatrix}
 $$
-其中，$\boldsymbol{0}$表示的是$2 \times 2$的全$0$矩阵，$\boldsymbol{\Phi}^{(\Delta d)}_m$与
-$\begin{bmatrix} 
+其中，$\boldsymbol{0}$表示的是$2 \times 2$的全$0$矩阵，$\boldsymbol{\Phi}^{(\Delta d)}_m$与每个三角函数对相乘:
+$$
+\boldsymbol{\Phi}^{(\Delta d)}_m \cdot
+\begin{bmatrix} 
 \sin({\omega_m} \cdot k)\\ 
 \cos({\omega_m} \cdot k)
+\end{bmatrix} = 
+\begin{bmatrix} 
+\sin({\omega_m} \cdot (k+\Delta d))\\ 
+\cos({\omega_m} \cdot (k+\Delta d))
 \end{bmatrix}
-$
-相乘
+$$
+
+求得：
+$$
+\boldsymbol{\Phi}^{(\Delta d)}_m = 
+\begin{bmatrix} 
+\cos({\omega_m} \cdot \Delta d) && \sin({\omega_m} \cdot \Delta d) \\ 
+-\sin({\omega_m} \cdot \Delta d) && \cos({\omega_m} \cdot \Delta d)
+\end{bmatrix}
+$$
+
+可以看到，$\boldsymbol{\Phi}^{(\Delta d)}_m$和序列绝对位置$k$完全不相关，而只与相对距离$\Delta d$有关。
+
+这意味着加入到Embedding序列中的位置编码$\boldsymbol{p}_{m}$和$\boldsymbol{p}_{n}$在进行注意力(内积)计算时，$\boldsymbol{p}_{m}\boldsymbol{p}_{n}^{\top}=\boldsymbol{T}^{(n-m)}\boldsymbol{p}_{n}\boldsymbol{p}_{n}^{\top}$，即模型$Q_k$只需要学习和两个位置之间距离有关的线性变换即可，赋予模型识别序列中相对位置的能力。
 
 [^7]: [Linear Relationships in the Transformer’s Positional Encoding](https://blog.timodenk.com/linear-relationships-in-the-transformers-positional-encoding/)
+
+### 远程衰减
+三角函数位置编码的深度解读[^1]中有一个章节叫远程衰减，和三角函数编码的相对性有过公式推导级别的讨论一个优良的性质：位置编码的内积值，随着相对距离的增大逐渐趋近于$0$，这符合直觉：相对距离越大的输入，其位置相关性越弱。如果推导公式比较难，可以可视化三角函数位置编码的内积，得到类似confusion matrix的可视化矩阵：
+
+![pe_cov](./figs/pe_colorbar.png)
 
 ## Absolute and Relative PE
 ### 绝对位置编码
@@ -187,7 +214,7 @@ $$
 \boldsymbol{q}_i \boldsymbol{k}_j^{\top} = \left(\boldsymbol{x}_i + \boldsymbol{p}_i\right)\boldsymbol{W}_Q \boldsymbol{W}_K^{\top}\left(\boldsymbol{x}_j + \boldsymbol{p}_j\right)^{\top} = \left(\boldsymbol{x}_i \boldsymbol{W}_Q + \boldsymbol{p}_i \boldsymbol{W}_Q\right)\left(\boldsymbol{W}_K^{\top}\boldsymbol{x}_j^{\top} + \boldsymbol{W}_K^{\top}\boldsymbol{p}_j^{\top}\right) 
 \end{equation}
 $$
-作为对比，假如我们没有假如相对位置编码的偏置，应该是：
+作为对比，假如我们没有相对位置编码的偏置，应该是：
 $$
 \boldsymbol{q}_i \boldsymbol{k}_j^{\top}=\boldsymbol{x}_i \boldsymbol{W}_Q \boldsymbol{W}_K^{\top} \boldsymbol{x}_j^{\top}
 $$
