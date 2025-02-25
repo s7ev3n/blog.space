@@ -14,42 +14,135 @@ draft: false
 [^4]: [层次分解位置编码，让BERT可以处理超长文本](https://kexue.fm/archives/7947)
 
 ## How PE work
-位置编码的目的很好理解：由于注意力attention的操作是不区分位置的，因此我们需要让模型知道，例如这是第几个词（绝对位置），这个词和另一个词的距离（相对位置）。
+位置编码的目的很好理解：由于自注意力attention的操作是不区分位置的，因此我们需要让模型知道，例如这是第几个词（绝对位置），这个词和另一个词的距离（相对位置）。
 
-> 知道了Why，另一个问题是How，PE是如何给输入序列注入位置信息的？以三角函数位置编码为例，为什么相加就赋予了Embedding位置信息了？
+有两个问题对理解位置编码很重要：
+- **位置编码是如何给输入序列注入位置信息的？**
+- **为什么相加就赋予了输入Embedding序列位置信息了？**
 
-回顾一下Transformer中默认的三角函数(Sinusoidal)位置编码，论文中公式：
+### Unique Position Encoding
+回顾一下Transformer中默认的三角函数位置编码，论文中公式：
 $$
-\begin{equation}\left\{\begin{aligned}&\boldsymbol{p}_{k,2i}=\sin\Big(k/10000^{2i/d}\Big)\\ 
-&\boldsymbol{p}_{k, 2i+1}=\cos\Big(k/10000^{2i/d}\Big) 
+\begin{equation}\left\{\begin{aligned}\boldsymbol{p}_{k,2i}&=\sin\Big(k/10000^{2i/d}\Big)\\ 
+\boldsymbol{p}_{k, 2i+1}&=\cos\Big(k/10000^{2i/d}\Big) 
 \end{aligned}\right.\end{equation}
 $$
 其中，$p_{k,2i},p_{k,2i+1}$分别是序列中位置$k$处的、在`embed_dim`上的$2i,2i+1$的位置，$d$是`embed_dim`的大小。
 
-换一种形式可以看到，每个对$k$位置的位置编码向量的每个值的奇偶位是$\sin$和$\cos$交替变换:
+换一种形式可以看到，每个对序列$k$位置的位置编码向量$\boldsymbol{p}_{k}$每个值在奇偶位是$\sin$和$\cos$交替变换:
 $$
 \boldsymbol{p}_{k} = \begin{bmatrix} 
+\sin({\omega_0} \cdot k)\\ 
+\cos({\omega_0} \cdot k)\\ 
+\\
 \sin({\omega_1} \cdot k)\\ 
 \cos({\omega_1} \cdot k)\\ 
 \\
-\sin({\omega_2} \cdot k)\\ 
-\cos({\omega_2} \cdot k)\\ 
-\\
 \vdots\\ 
 \\
-\sin({\omega_{d/2}} \cdot k)\\ 
-\cos({\omega_{d/2}} \cdot k) 
+\sin({\omega_{\frac{d}{2}-1}} \cdot k)\\ 
+\cos({\omega_{\frac{d}{2}-1}} \cdot k) 
 \end{bmatrix}
 $$
-其中，$\omega_k = \frac{1}{10000^{2i / d}}$。
+其中，$\omega_i = \frac{1}{10000^{2i / d}}$，请记住这里奇数和偶数位分别是频率相同的$\sin$和$\cos$组成的一对，后面的RoPE会使用这一个二维向量举例。
 
-**问题是为什么上式赋予了Embedding位置信息？**
+**为什么上式赋予了Embedding位置信息？**
 
 我们先回到问题的原点，如果想要给某个序列添加位置信息，这个位置信息是什么样子的呢？
 有一些选项：
 - 例如$[0,1]$区间分别代表序列中第一个位置和最后一个位置，但是缺点是如果序列长度变化，不能保证，每个绝对位置上的值不变
 - 或者，可以把位置这个数字直接给到序列，即$1,2,...,n$，但是缺点是序列的位置会变得很大，如果序列非常长的话
 
+总结起来，给序列提供位置信息需要的性质：
+- 每个序列位置编码应该是唯一的标识，最好是序列位置$k$的函数
+- 必须是确定性的，不能对不同的序列长度，位置编码是不同的
+
+**给每个序列中的位置提供唯一的位置编码信息，就为输入序列注入了位置信息。**
+
+很多文章使用二进制的数字来表示整型的位置[^5]举例对三角函数编码交替进行比较，例如:
+$$
+\begin{align}
+  0: \ \ \ \ \color{orange}{\texttt{0}} \ \ \color{green}{\texttt{0}} \ \ \color{blue}{\texttt{0}} \ \ \color{red}{\texttt{0}} & & 
+  8: \ \ \ \ \color{orange}{\texttt{1}} \ \ \color{green}{\texttt{0}} \ \ \color{blue}{\texttt{0}} \ \ \color{red}{\texttt{0}} \\
+  1: \ \ \ \ \color{orange}{\texttt{0}} \ \ \color{green}{\texttt{0}} \ \ \color{blue}{\texttt{0}} \ \ \color{red}{\texttt{1}} & & 
+  9: \ \ \ \ \color{orange}{\texttt{1}} \ \ \color{green}{\texttt{0}} \ \ \color{blue}{\texttt{0}} \ \ \color{red}{\texttt{1}} \\ 
+  2: \ \ \ \ \color{orange}{\texttt{0}} \ \ \color{green}{\texttt{0}} \ \ \color{blue}{\texttt{1}} \ \ \color{red}{\texttt{0}} & & 
+  10: \ \ \ \ \color{orange}{\texttt{1}} \ \ \color{green}{\texttt{0}} \ \ \color{blue}{\texttt{1}} \ \ \color{red}{\texttt{0}} \\ 
+  3: \ \ \ \ \color{orange}{\texttt{0}} \ \ \color{green}{\texttt{0}} \ \ \color{blue}{\texttt{1}} \ \ \color{red}{\texttt{1}} & & 
+  11: \ \ \ \ \color{orange}{\texttt{1}} \ \ \color{green}{\texttt{0}} \ \ \color{blue}{\texttt{1}} \ \ \color{red}{\texttt{1}} \\ 
+  4: \ \ \ \ \color{orange}{\texttt{0}} \ \ \color{green}{\texttt{1}} \ \ \color{blue}{\texttt{0}} \ \ \color{red}{\texttt{0}} & & 
+  12: \ \ \ \ \color{orange}{\texttt{1}} \ \ \color{green}{\texttt{1}} \ \ \color{blue}{\texttt{0}} \ \ \color{red}{\texttt{0}} \\
+  5: \ \ \ \ \color{orange}{\texttt{0}} \ \ \color{green}{\texttt{1}} \ \ \color{blue}{\texttt{0}} \ \ \color{red}{\texttt{1}} & & 
+  13: \ \ \ \ \color{orange}{\texttt{1}} \ \ \color{green}{\texttt{1}} \ \ \color{blue}{\texttt{0}} \ \ \color{red}{\texttt{1}} \\
+  6: \ \ \ \ \color{orange}{\texttt{0}} \ \ \color{green}{\texttt{1}} \ \ \color{blue}{\texttt{1}} \ \ \color{red}{\texttt{0}} & & 
+  14: \ \ \ \ \color{orange}{\texttt{1}} \ \ \color{green}{\texttt{1}} \ \ \color{blue}{\texttt{1}} \ \ \color{red}{\texttt{0}} \\
+  7: \ \ \ \ \color{orange}{\texttt{0}} \ \ \color{green}{\texttt{1}} \ \ \color{blue}{\texttt{1}} \ \ \color{red}{\texttt{1}} & & 
+  15: \ \ \ \ \color{orange}{\texttt{1}} \ \ \color{green}{\texttt{1}} \ \ \color{blue}{\texttt{1}} \ \ \color{red}{\texttt{1}} \\
+\end{align} 
+$$
+可以观察到：低位(红色)的0和1交替是非常快速的，越往高位走，0和1的交替频率会越低。0和1的交替都是整型，它的浮点数形式就想到了三角函数交替了。
+
+[^5]: [Transformer Architecture: The Positional Encoding](https://kazemnejad.com/blog/transformer_architecture_positional_encoding/)
+
+### Why Addtion
+第二个问题：为什么和输入Embedding序列相加？Concat行不行?
+
+**tl;dr是其实concat应该也没有太大的问题，但是可能会增加一些参数量。**
+
+<details>
+<summary>Reddit上有一个不错的回答[^6]:</summary>
+
+In attention, we basically take two word embeddings (x and y), pass one through a Query transformation matrix (Q) and the second through a Key transformation matrix (K), and compare how similar the resulting query and key vectors are by their dot product. So, basically, we want the dot product between Qx and Ky, which we write as:
+
+(Qx)'(Ky) = x' (Q'Ky). So equivalently we just need to learn one joint Query-Key transformation (Q'K) that transform the secondary inputs y into a new space in which we can compare x.
+
+By adding positional encodings e and f to x and y, respectively, we essentially change the dot product to
+
+(Q(x+e))' (K(y+f)) = (Qx+Qe)' (Ky+Kf) = (Qx)' Ky + (Qx)' Kf + (Qe)' Ky + (Qe)' Kf = x' (Q'Ky) + x' (Q'Kf) + e' (Q'Ky) + e' (Q'K f), where in addition to the original x' (Q'Ky) term, which asks the question "how much attention should we pay to word x given word y", we also have x' (Q'Kf) + e' (Q'Ky) + e' (Q'K f), which ask the additional questions, "how much attention should we pay to word x given the position f of word y", "how much attention should we pay to y given the position e of word x", and "how much attention should we pay to the position e of word x given the position f of word y".
+
+Essentially, the learned transformation matrix Q'K with positional encodings has to do all four of these tasks simultaneously. This is the part that may appear inefficient, since intuitively, there should be a trade-off in the ability of Q'K to do four tasks simultaneously and well.
+
+HOWEVER, MY GUESS is that there isn't actually a trade-off when we force Q'K to do all four of these tasks, because of some approximate orthogonality condition that is satisfied of in high dimensions. The intuition for this is that randomly chosen vectors in high dimensions are almost always approximately orthogonal. There's no reason to think that the word vectors and position encoding vectors are related in any way. If the word embeddings form a smaller dimensional subspace and the positional encodings form another smaller dimensional subspace, then perhaps the two subspaces themselves are approximately orthogonal, so presumably these subspaces can be transformed approx. independently through the same learned Q'K transformation (since they basically exist on different axes in high dimensional space). I don't know if this is true, but it seems intuitively possible.
+
+If true, this would explain why adding positional encodings, instead of concatenation, is essentially fine. Concatenation would ensure that the positional dimensions are orthogonal to the word dimensions, but my guess is that, because these embedding spaces are so high dimensional, you can get approximate orthogonality for free even when adding, without the costs of concatenation (many more parameters to learn). Adding layers would only help with this, by allowing for nonlinearities.
+
+We also ultimately want e and f to behave in some nice ways, so that there's some kind of "closeness" in the vector representation with respect to small changes in positions. The sin and cos representation is nice since nearby positions have high similarity in their positional encodings, which may make it easier to learn transformations that "preserve" this desired closeness.
+
+(Maybe I'm wrong, and the approximate orthogonality arises from stacking multiple layers or non-linearities in the fully-connected parts of the transformer).
+
+tl;dr: It is intuitively possible that, in high dimensions, the word vectors form a smaller dimensional subspace within the full embedding space, and the positional vectors form a different smaller dimensional subspace approximately orthogonal to the one spanned by word vectors. Thus despite vector addition, the two subspaces can be manipulated essentially independently of each other by some single learned transformation. Thus, concatenation doesn't add much, but greatly increases cost in terms of parameters to learn.
+
+</details>
+
+[^6]: [Positional Encoding in Transformer](https://www.reddit.com/r/MachineLearning/comments/cttefo/comment/exs7d08/)
+
+### Relative Position
+> Transformer原文中有一句话：“We chose this function because we hypothesized it would allow the model to easily learn to attend by relative positions, since for any fixed offset $\Delta d$, $\boldsymbol{p}_{k+\Delta d}$ can be represented as a linear function of $\boldsymbol{p}_{k}$." 也就是说三角函数位置编码支持表达**相对位置**。
+
+翻译一下上面的表达到公式是说存在一个只与相对位置有关的$\boldsymbol{T}^{(\Delta d)}$：
+$$
+\boldsymbol{T}^{(\Delta d)}\boldsymbol{p}_{k,:}=\boldsymbol{p}_{k+\Delta d,:}
+$$
+
+文章[^7]做了详细的推导，
+
+$$
+\boldsymbol{T}^{(\Delta d)} = \begin{bmatrix}
+\boldsymbol{\Phi}^{(\Delta d)}_1 & \boldsymbol{0} & \cdots & \boldsymbol{0} \\
+\boldsymbol{0} & \boldsymbol{\Phi}^{(\Delta d)}_2 & \cdots & \boldsymbol{0} \\
+\boldsymbol{0} & \boldsymbol{0} & \ddots & \boldsymbol{0} \\
+\boldsymbol{0} & \boldsymbol{0} & \cdots & \boldsymbol{\Phi}^{(\Delta d)}_{\frac{d}{2}-1}
+\end{bmatrix}
+$$
+其中，$\boldsymbol{0}$表示的是$2 \times 2$的全$0$矩阵，$\boldsymbol{\Phi}^{(\Delta d)}_m$与
+$\begin{bmatrix} 
+\sin({\omega_m} \cdot k)\\ 
+\cos({\omega_m} \cdot k)
+\end{bmatrix}
+$
+相乘
+
+[^7]: [Linear Relationships in the Transformer’s Positional Encoding](https://blog.timodenk.com/linear-relationships-in-the-transformers-positional-encoding/)
 
 ## Absolute and Relative PE
 ### 绝对位置编码
