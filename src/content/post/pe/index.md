@@ -1,6 +1,6 @@
 ---
-title: "Position encoding notes"
-description: "various position encoding"
+title: "Position encoding and RoPE"
+description: "position encoding notes"
 publishDate: "3 Aug 2024"
 updatedDate: "4 Jan 2025"
 tags: ["tech/transformer"]
@@ -13,14 +13,14 @@ draft: false
 [^3]: [让研究人员绞尽脑汁的Transformer位置编码](https://kexue.fm/archives/8130)
 [^4]: [层次分解位置编码，让BERT可以处理超长文本](https://kexue.fm/archives/7947)
 
-## Sinusoidal PE in the details
+## 深入三角函数位置编码
 位置编码在Transformer原文中的戏份并不多，主要目的是由于自注意力attention的操作是不区分位置的，因此我们需要让模型知道，例如这是第几个词（绝对位置），这个词和另一个词的距离（相对位置）。
 
 虽然知道三角函数位置编码的具体公式和代码，但是很多细节和设计理由并没有深究，比较简单的两个问题是：
-- **位置编码是如何给输入序列注入位置信息的？**
-- **为什么相加就赋予了输入Embedding序列位置信息了？**
+- **位置编码是如何给输入Embedding序列注入位置信息的？**
+- **为什么使用相加赋予输入Embedding序列位置信息？**
 
-### Unique Position Encoding
+### 位置编码性质
 回顾一下三角函数位置编码：
 $$
 \begin{equation}\left\{\begin{aligned}\boldsymbol{p}_{k,2i}&=\sin\Big(k/10000^{2i/d}\Big)\\ 
@@ -88,7 +88,7 @@ $$
 
 [^5]: [Transformer Architecture: The Positional Encoding](https://kazemnejad.com/blog/transformer_architecture_positional_encoding/)
 
-### Why Addtion
+### 相加
 第二个问题：为什么和输入Embedding序列相加？Concat行不行?
 
 **tl;dr是其实concat应该也没有太大的问题，但是可能会增加一些参数量。**
@@ -120,15 +120,15 @@ tl;dr: It is intuitively possible that, in high dimensions, the word vectors for
 
 [^6]: [Positional Encoding in Transformer](https://www.reddit.com/r/MachineLearning/comments/cttefo/comment/exs7d08/)
 
-### Relative Position
-> Transformer原文中有一句话：“We chose this function because we hypothesized it would allow the model to easily learn to attend by relative positions, since for any fixed offset $\Delta d$, $\boldsymbol{p}_{k+\Delta d}$ can be represented as a linear function of $\boldsymbol{p}_{k}$." 也就是说三角函数位置编码支持表达**相对位置**。
+### 相对性质
+> Transformer原文中有一句话：“We chose this function because we hypothesized it would allow the model to easily learn to attend by relative positions, since for any fixed offset $\Delta d$, $\boldsymbol{p}_{k+\Delta d}$ can be represented as a linear function of $\boldsymbol{p}_{k}$." 也就是说三角函数位置编码支持表达**相对位置**，但是如何证明？
 
 翻译一下上面的表达到公式是说存在一个只与相对位置有关的$\boldsymbol{T}^{(\Delta d)}$：
 $$
 \boldsymbol{T}^{(\Delta d)}\boldsymbol{p}_{k,:}=\boldsymbol{p}_{k+\Delta d,:}
 $$
 
-文章[^7]做了详细的推导，
+文章[^7]做了详细的推导：
 
 $$
 \boldsymbol{T}^{(\Delta d)} = \begin{bmatrix}
@@ -138,7 +138,7 @@ $$
 \boldsymbol{0} & \boldsymbol{0} & \cdots & \boldsymbol{\Phi}^{(\Delta d)}_{\frac{d}{2}-1}
 \end{bmatrix}
 $$
-其中，$\boldsymbol{0}$表示的是$2 \times 2$的全$0$矩阵，$\boldsymbol{\Phi}^{(\Delta d)}_m$与每个三角函数对相乘:
+其中，$\boldsymbol{0}$表示的是$2 \times 2$的全$0$矩阵，$\boldsymbol{\Phi}^{(\Delta d)}_m$与每个三角函数对(三角函数位置编码以交替的$\sin$和$\cos$出现)相乘:
 $$
 \boldsymbol{\Phi}^{(\Delta d)}_m \cdot
 \begin{bmatrix} 
@@ -151,7 +151,7 @@ $$
 \end{bmatrix}
 $$
 
-求得：
+很容易求得：
 $$
 \boldsymbol{\Phi}^{(\Delta d)}_m = 
 \begin{bmatrix} 
@@ -160,31 +160,35 @@ $$
 \end{bmatrix}
 $$
 
-可以看到，$\boldsymbol{\Phi}^{(\Delta d)}_m$和序列绝对位置$k$完全不相关，而只与相对距离$\Delta d$有关。
+可以惊讶的发现：$\boldsymbol{\Phi}^{(\Delta d)}_m$和序列绝对位置$k$完全不相关，而只与相对距离$\Delta d$有关！
 
-这意味着加入到Embedding序列中的位置编码$\boldsymbol{p}_{m}$和$\boldsymbol{p}_{n}$在进行注意力(内积)计算时，$\boldsymbol{p}_{m}\boldsymbol{p}_{n}^{\top}=\boldsymbol{T}^{(n-m)}\boldsymbol{p}_{n}\boldsymbol{p}_{n}^{\top}$，即模型$Q_k$只需要学习和两个位置之间距离有关的线性变换即可，赋予模型识别序列中相对位置的能力。
+这意味着加入到Embedding序列中的位置编码$\boldsymbol{p}_{m}$和$\boldsymbol{p}_{n}$隐含比较简单的、和相对距离相关的关系，所以文中说假定模型可以学习到这个相对的位置编码关系。不过，三角函数编码还是更多以绝对位置编码存在，这里的相对性是隐含的，做的不够好，所以有后文的RoPE编码对此进行了改进。
 
 [^7]: [Linear Relationships in the Transformer’s Positional Encoding](https://blog.timodenk.com/linear-relationships-in-the-transformers-positional-encoding/)
 
 ### 远程衰减
-三角函数位置编码的深度解读[^1]中有一个章节叫远程衰减，和三角函数编码的相对性有过公式推导级别的讨论一个优良的性质：位置编码的内积值，随着相对距离的增大逐渐趋近于$0$，这符合直觉：相对距离越大的输入，其位置相关性越弱。如果推导公式比较难，可以可视化三角函数位置编码的内积，得到类似confusion matrix的可视化矩阵：
+三角函数位置编码的深度解读[^1]中有一个章节叫远程衰减，和三角函数编码的相对性有过公式推导级别的讨论一个优良的性质：位置编码的内积值，随着相对距离的增大逐渐趋近于$0$，这符合直觉：**相对距离越大的输入，其位置相关性越弱**。如果推导公式比较难，可以可视化三角函数位置编码的内积，得到类似confusion matrix的可视化矩阵，见下图。
+
+<details>
+<summary>可视化远程衰减矩阵：</summary>
 
 ![pe_cov](./figs/pe_colorbar.png)
+</details>
 
-## Absolute and Relative PE
+## 相对和绝对位置编码
 ### 绝对位置编码
 一般来说，绝对位置编码会加到输入序列中：在输入的第$k$个向量$x_k$中加入位置向量$p_k$，即$x_k+p_k$，其中$p_k$只依赖于在序列的位置$k$。
 常见的位置向量形式是三角式(Sinusoidal)和可训练式，也有其他形式[^3]。
 
 相对于相对位置编码，绝对位置编码的优点是计算复杂度更低。
 
-#### 三角函数(Sinusoidal)
+#### 三角函数
 
 在[Transformer](https://www.s7ev3n.space/posts/transformer/)文中，我们知道Sinusocidal位置编码在`embed_sim`后面接近于$0$和$1$间隔的编码，因此可以期望它有一定的**外推性**。
 
 三角函数还有一个有意思的性质：$\sin(i+j)=\sin i\cos j+\cos i\sin j$和$\cos(i+j)=\cos i \cos j - \sin i \sin j$，即位置$i+j$可以表示成$i$和$j$的组合的形式，这提供了某种表达相对位置编码的性质。
 
-:::important
+:::note
 **外推性**是指模型在推理阶段输入比训练阶段更长序列时的泛化能力。举例来说，预训练时的最大长度是$512$，但是在推理时输入了$768$长度的序列，由于位置编码在训练时没有见过这样长的序列，位置编码是否还可以提供有效的位置信息。
 :::
 
@@ -304,7 +308,7 @@ $$
 - 复数矩阵表示的行列式与复数的模长相等，都是$a^2+b^2$
 - 复数的共轭(复数$a+bi$的共轭是$a-bi$)等于复数矩阵表示的转置
 
-:::important
+:::note
 为什么复数可以映射到一个$2 \times 2$的矩阵表示呢？以下是deepseek的回答：
 
 复数可以用矩阵表示的原因在于它们的代数结构同构于特定的$2 \times 2$实矩阵组成的环。
@@ -352,4 +356,28 @@ z = re^{i\theta}
 $$
 
 ### RoPE
-好了，进入正题“旋转位置编码”。
+因为RoPE和复数的表示紧密相关，所以花了很长的介绍，现在进入正题“旋转位置编码”。其实，从前面的章节中可以看到，三角函数编码是一种绝对位置编码，因为它提供了每个位置的确定性的编码信息，同时它也可以提供一些隐含的相对位置信息，可以说三角函数位置编码是性质非常不错的设计。但是相对位置并没有显示的去表示，RoPE是对此的改进，它是使用“绝对位置编码的方式实现相对位置编码”。
+
+有位置为$m$的`query`向量$\mathbf{q}_m$，以及在位置$n$的`key`向量$\mathbf{k}_n$，经过函数$f$变换后，使得注意力计算(内积)中表达相对位置关系$m-n$：
+$$
+\begin{equation}\tilde{\boldsymbol{q}}_m = \boldsymbol{f}(\boldsymbol{q}, m), \quad\tilde{\boldsymbol{k}}_n = \boldsymbol{f}(\boldsymbol{k}, n)\end{equation}
+$$
+$$
+\begin{equation}\langle\boldsymbol{f}(\boldsymbol{q}, m), \boldsymbol{f}(\boldsymbol{k}, n)\rangle = g(\boldsymbol{q},\boldsymbol{k},m-n)\end{equation}
+$$
+
+先从简单的情况看起，$\tilde{\boldsymbol{q}}_m$和$\tilde{\boldsymbol{k}}_n$都是二维向量，因为三角位置编码值是$\sin$和$\cos$交替出现，这样取一对就是二维向量。这里将这个二维向量当作**复数**看待！
+
+:::note
+可以证明：两个二维向量的内积，等于把它们当复数看时，一个复数与另一个复数的共轭的乘积实部，即
+$$
+\begin{equation}\langle \boldsymbol{q}_m, \boldsymbol{k}_n\rangle = \text{Re}\left[\boldsymbol{q}_m \boldsymbol{k}_n^*\right]\end{equation}
+$$
+:::
+
+于是有：
+$$
+\begin{equation}\langle\boldsymbol{f}(\boldsymbol{q}, m), \boldsymbol{f}(\boldsymbol{k}, n)\rangle = 
+\text{Re}[\boldsymbol{f}(\boldsymbol{q}, m)\boldsymbol{f}^*(\boldsymbol{k}, n)]
+= g(\boldsymbol{q},\boldsymbol{k},m-n)\end{equation}
+$$
