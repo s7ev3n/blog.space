@@ -245,9 +245,111 @@ $\boldsymbol{p}_K$和$\boldsymbol{p}_V$是**可以是可训练式活三角函数
 [^5]: [Self-Attention with Relative Position Representations](https://arxiv.org/abs/1803.02155)
 ## 旋转式位置编码
 "一般来说，绝对位置编码具有实现简单、计算速度快等优点，而相对位置编码则直接地体现了相对位置信号，跟我们的直观理解吻合，实际性能往往也更好。由此可见，如果可以通过绝对位置编码的方式实现相对位置编码，那么就是集各家之所长。"
-
 旋转式位置编码，英文是Rotary Position Embedding (RoPE) 是一种“绝对位置编码的方式实现相对位置编码”的设计[^2]，简单说来RoPE利用向量的内积的复数形式，使得绝对位置编码的方式中内含对相对位置的依赖。
 
-:::note
-将向量表示为复数形式时，通常使用极坐标的形式$re^{i\theta}$，其中$r$是向量的模，$\theta$是向量与$x$轴正方向的夹脚，
+### 复数的表示
+
+#### 矩阵表示
+复数系$\mathbb{C}$可以看作是二维平面$\mathbb{R}^2$（复数平面），任意复数$z$可唯一的表示为$z=a+bi$，$i$表示的是虚部，$a$和$b$都是实数。也就是说，复数$a+bi$与实数对$(a,b)$组成有序对：
+
+$$a+bi \leftrightarrow (a,b)$$
+
+复数系满足加法和乘法结构：$(a+bi)+(c+di)=(a+c)+(b+d)i$和$(a+bi)(c+di)=(ac-bd)+(bc+ad)i$
+
+复数也可以用一个$2 \times 2$的实矩阵表示，定义复数$a+bi$到矩阵的映射$f$：
+$$
+f(a + bi) = 
+\begin{bmatrix}
+a & -b \\
+b & a
+\end{bmatrix}
+$$
+这样定义的矩阵表示保留了复数的加法和乘法代数结构（可以将复数系$\mathbf{C}$和它的矩阵表达$\mathbf{R}^{2 \times 2}$是两个同态的代数结构）
+- 加法
+$$
+\begin{align*}
+f((a + bi) + (c + di)) &= f((a + c) + (b + d) i) \\
+&= \begin{bmatrix}
+a + c & -b-d \\
+b + d & a + c
+\end{bmatrix} \\
+&= \begin{bmatrix}
+a & -b \\
+b & a
+\end{bmatrix} + \begin{bmatrix}
+c & -d \\
+d & c
+\end{bmatrix}
+\end{align*}
+$$
+- 乘法
+$$
+\begin{align*}
+f((a + bi) (c + di)) &= f((ac - bd) + (bc + ad) i) \\
+&= \begin{bmatrix}
+ac - bd & -bc-ad \\
+bc + ad & ac - bd
+\end{bmatrix} \\
+&= \begin{bmatrix}
+a & -b \\
+b & a
+\end{bmatrix}  \begin{bmatrix}
+c & -d \\
+d & c
+\end{bmatrix}
+\end{align*}
+$$
+
+另外两个复数的矩阵表示保留的是：
+- 复数矩阵表示的行列式与复数的模长相等，都是$a^2+b^2$
+- 复数的共轭(复数$a+bi$的共轭是$a-bi$)等于复数矩阵表示的转置
+
+:::important
+为什么复数可以映射到一个$2 \times 2$的矩阵表示呢？以下是deepseek的回答：
+
+复数可以用矩阵表示的原因在于它们的代数结构同构于特定的$2 \times 2$实矩阵组成的环。
+
+复数可以看作是一个二维实向量空间，基为$1$和$i$，而矩阵表示可能对应于这个向量空间上的线性变换。比如，复数乘法可以视为一种线性变换，作用于二维实向量空间上，对应的矩阵就是这样的形式。
+考虑将复数$a + bi$视为一个线性变换，它作用在另一个复数$x + yi$上，即乘以$(a + bi)$后的结果。这个线性变换可以用矩阵来表示。例如，复数$a + bi$乘以$x + yi$得到$(ax - by) + (ay + bx)i$。如果我们将复数$x + yi$表示为向量
+$
+\begin{bmatrix}
+x  \\
+y 
+\end{bmatrix}$，那么这个乘法对应的线性变换就是：
+
+$$
+\begin{bmatrix}
+a & -b \\
+b & a
+\end{bmatrix}
+\begin{bmatrix}
+x  \\
+y 
+\end{bmatrix}=
+\begin{bmatrix}
+ax - by \\
+bx + ay
+\end{bmatrix}
+$$
+
+这正是上面的矩阵形式。因此，每个复数$a + bi$都可以对应到这样一个线性变换矩阵，而这个矩阵的乘法对应于复数的乘法，加法对应于复数的加法。因此，复数域同构于这些矩阵构成的矩阵环的一个子环。
 :::
+
+#### 极坐标表示
+复数$z=a+bi$可以用模长和幅角表示：
+$$
+z=r(\sin \theta + i\sin \theta)
+$$
+其中，$r=\sqrt{a^2+b^2}$，幅角$\theta=arctan(\frac{b}{a})$。
+
+欧拉公式：
+$$
+e^{i}=\cos \theta + i \sin \theta
+$$
+因此，复数可以进一步写成：
+$$
+z = re^{i\theta}
+$$
+
+### RoPE
+好了，进入正题“旋转位置编码”。
