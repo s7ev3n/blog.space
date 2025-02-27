@@ -249,7 +249,7 @@ $\boldsymbol{p}_K$和$\boldsymbol{p}_V$是**可以是可训练式活三角函数
 [^5]: [Self-Attention with Relative Position Representations](https://arxiv.org/abs/1803.02155)
 ## 旋转式位置编码
 "一般来说，绝对位置编码具有实现简单、计算速度快等优点，而相对位置编码则直接地体现了相对位置信号，跟我们的直观理解吻合，实际性能往往也更好。由此可见，如果可以通过绝对位置编码的方式实现相对位置编码，那么就是集各家之所长。"
-旋转式位置编码，英文是Rotary Position Embedding (RoPE) 是一种“绝对位置编码的方式实现相对位置编码”的设计[^2]，简单说来RoPE利用向量的内积的复数形式，使得绝对位置编码的方式中内含对相对位置的依赖。
+旋转式位置编码，英文是Rotary Position Embedding (RoPE) 是一种“绝对位置编码的方式实现相对位置编码”的设计[^2]：简单说来，**RoPE应用旋转矩阵在输入序列赋予绝对位置信息，通过注意力计算（内积）赋予序列相对位置信息**。
 
 ### 复数的表示
 
@@ -346,38 +346,92 @@ z=r(\sin \theta + i\sin \theta)
 $$
 其中，$r=\sqrt{a^2+b^2}$，幅角$\theta=arctan(\frac{b}{a})$。
 
+共轭使用极坐标表示：
+$$
+\overline{z} = r(\sin \theta - i\sin \theta)
+$$
+
 欧拉公式：
 $$
-e^{i}=\cos \theta + i \sin \theta
+e^{i\theta}=\cos \theta + i \sin \theta
 $$
 因此，复数可以进一步写成：
 $$
 z = re^{i\theta}
 $$
 
+共轭使用欧拉公式：
+$$
+\overline{re^{i\theta}} = re^{-i\theta}
+$$
+
+
 ### RoPE
-因为RoPE和复数的表示紧密相关，所以花了很长的介绍，现在进入正题“旋转位置编码”。其实，从前面的章节中可以看到，三角函数编码是一种绝对位置编码，因为它提供了每个位置的确定性的编码信息，同时它也可以提供一些隐含的相对位置信息，可以说三角函数位置编码是性质非常不错的设计。但是相对位置并没有显示的去表示，RoPE是对此的改进，它是使用“绝对位置编码的方式实现相对位置编码”。
+因为RoPE和复数的表示紧密相关，所以先对复数的表示做了铺垫，现在进入正题“旋转位置编码”。其实，从前面的章节中可以看到，三角函数编码是一种绝对位置编码，因为它提供了每个位置的确定性的编码信息，同时它也可以提供一些隐含的相对位置信息，可以说三角函数位置编码是性质非常不错的设计。但是相对位置并没有显示的去表示，RoPE是对此的改进，它是使用“绝对位置编码的方式实现相对位置编码”[^2][^8]。
 
-有位置为$m$的`query`向量$\mathbf{q}_m$，以及在位置$n$的`key`向量$\mathbf{k}_n$，经过函数$f$变换后，使得注意力计算(内积)中表达相对位置关系$m-n$：
+[^8]: [旋转位置编码RoPE](https://yzhliu.github.io/blog/2023/positional-encoding-rope/)
+
+有位置为$m$的`query`向量$\mathbf{q}_m$，以及在位置$n$的`key`向量$\mathbf{k}_n$，经过函数$f$变换后，赋予绝对位置信息，并且再注意力计算(内积)中表达相对位置关系$m-n$的位置信息：
+> 对函数$f$进一步说明，作为对比，在三角函数编码中，$f$相当于是$f(q,m)=q+p_m$，$p_m$就是提前计算好的三角函数编码。但是并不是说，只有相加这种方式，实际上在RoPE中，是使用了矩阵乘法(复数的旋转矩阵表示)的方式。
+
 $$
-\begin{equation}\tilde{\boldsymbol{q}}_m = \boldsymbol{f}(\boldsymbol{q}, m), \quad\tilde{\boldsymbol{k}}_n = \boldsymbol{f}(\boldsymbol{k}, n)\end{equation}
+\tilde{\boldsymbol{q}}_m = \boldsymbol{f}(\boldsymbol{q}, m), \quad\tilde{\boldsymbol{k}}_n = \boldsymbol{f}(\boldsymbol{k}, n)
 $$
 $$
-\begin{equation}\langle\boldsymbol{f}(\boldsymbol{q}, m), \boldsymbol{f}(\boldsymbol{k}, n)\rangle = g(\boldsymbol{q},\boldsymbol{k},m-n)\end{equation}
+\langle\boldsymbol{f}(\boldsymbol{q}, m), \boldsymbol{f}(\boldsymbol{k}, n)\rangle = g(\boldsymbol{q},\boldsymbol{k},m-n)
 $$
 
-先从简单的情况看起，$\tilde{\boldsymbol{q}}_m$和$\tilde{\boldsymbol{k}}_n$都是二维向量，因为三角位置编码值是$\sin$和$\cos$交替出现，这样取一对就是二维向量。这里将这个二维向量当作**复数**看待！
+
+目的是要找到这样的函数$f$，满足上面的公式。先一步一步从简单的情况看起，$\boldsymbol{q}_m$和$\boldsymbol{k}_n \in \mathbb{R}^2$都是二维向量。作为一个不是很贴切的联想，三角位置编码的值最小的单元是一对$\sin$和$\cos$。
+
+RoPE巧妙将$f$定义为一个和绝对位置有关的旋转矩阵作用于输入序列：
+$$
+\boldsymbol{f}(\boldsymbol{q}, m) =\begin{bmatrix}\cos m\theta & -\sin m\theta\\ \sin m\theta & \cos m\theta\end{bmatrix} \begin{bmatrix}q_0 \\ q_1\end{bmatrix}
+$$
+由于一个复数既有矩阵的表示也有极坐标的表示：
+$$
+\boldsymbol{f}(\boldsymbol{q}, m) =
+\boldsymbol{q} e^{\text{i}m\theta}
+$$
+
+把上式带入到内积计算中，并且
+$$
+\langle\boldsymbol{f}(\boldsymbol{q}, m), \boldsymbol{f}(\boldsymbol{k}, n)\rangle=
+\langle (\boldsymbol{q_m} e^{\text{i}m\theta}) (\boldsymbol{k_n} e^{\text{i}n\theta}) \rangle=
+\text{Re} \left[(\boldsymbol{q_m} e^{\text{i}m\theta}) (\boldsymbol{k_n} e^{\text{i}n\theta})^{*} \right] =
+\text{Re}\left[\boldsymbol{q}_m \boldsymbol{k}_n^* e^{\text{i}(m-n)\theta}\right]
+$$
+
+你会发现：如此定义的$f$在内积操作（注意力计算）时赋予了相对的位置信息！完美实现既有绝对位置又有相对位置！
 
 :::note
 可以证明：两个二维向量的内积，等于把它们当复数看时，一个复数与另一个复数的共轭的乘积实部，即
 $$
-\begin{equation}\langle \boldsymbol{q}_m, \boldsymbol{k}_n\rangle = \text{Re}\left[\boldsymbol{q}_m \boldsymbol{k}_n^*\right]\end{equation}
+\langle \boldsymbol{q}_m, \boldsymbol{k}_n\rangle = \text{Re}\left[\boldsymbol{q}_m \boldsymbol{k}_n^*\right]
 $$
 :::
 
-于是有：
+把二维扩展到$d$维度：
 $$
-\begin{equation}\langle\boldsymbol{f}(\boldsymbol{q}, m), \boldsymbol{f}(\boldsymbol{k}, n)\rangle = 
-\text{Re}[\boldsymbol{f}(\boldsymbol{q}, m)\boldsymbol{f}^*(\boldsymbol{k}, n)]
-= g(\boldsymbol{q},\boldsymbol{k},m-n)\end{equation}
+\scriptsize{\begin{bmatrix} 
+\cos m\theta_0 & -\sin m\theta_0 & 0 & 0 & \cdots & 0 & 0 \\ 
+\sin m\theta_0 & \cos m\theta_0 & 0 & 0 & \cdots & 0 & 0 \\ 
+0 & 0 & \cos m\theta_1 & -\sin m\theta_1 & \cdots & 0 & 0 \\ 
+0 & 0 & \sin m\theta_1 & \cos m\theta_1 & \cdots & 0 & 0 \\ 
+\vdots & \vdots & \vdots & \vdots & \ddots & \vdots & \vdots \\ 
+0 & 0 & 0 & 0 & \cdots & \cos m\theta_{d/2-1} & -\sin m\theta_{d/2-1} \\ 
+0 & 0 & 0 & 0 & \cdots & \sin m\theta_{d/2-1} & \cos m\theta_{d/2-1} \\ 
+\end{bmatrix} \begin{bmatrix}q_0 \\ q_1 \\ q_2 \\ q_3 \\ \vdots \\ q_{d-2} \\ q_{d-1}\end{bmatrix}}
 $$
+
+由于矩阵过于稀疏，使用下面方式计算：
+$$
+\begin{bmatrix}q_0 \\ q_1 \\ q_2 \\ q_3 \\ \vdots \\ q_{d-2} \\ q_{d-1} 
+\end{bmatrix}\otimes\begin{bmatrix}\cos m\theta_0 \\ \cos m\theta_0 \\ \cos m\theta_1 \\ \cos m\theta_1 \\ \vdots \\ \cos m\theta_{d/2-1} \\ \cos m\theta_{d/2-1} 
+\end{bmatrix} + \begin{bmatrix}-q_1 \\ q_0 \\ -q_3 \\ q_2 \\ \vdots \\ -q_{d-1} \\ q_{d-2} 
+\end{bmatrix}\otimes\begin{bmatrix}\sin m\theta_0 \\ \sin m\theta_0 \\ \sin m\theta_1 \\ \sin m\theta_1 \\ \vdots \\ \sin m\theta_{d/2-1} \\ \sin m\theta_{d/2-1} 
+\end{bmatrix}
+$$
+其中，$\otimes$表示逐元素相乘，$\theta_j = 10000^{−\frac{2j}{d}}$与三角函数编码一致。
+
+### RoPE的实现
