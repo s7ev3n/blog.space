@@ -458,21 +458,18 @@ qw = qw * cos_pos + qw2 * sin_pos
 
 另外有人使用`pytorch`实现了另一个[版本](https://github.com/JunnYu/RoFormer_pytorch)，主要是借助公式：
 $$
-\begin{bmatrix}\cos m\theta & -\sin m\theta\\ \sin m\theta & \cos m\theta\end{bmatrix} \begin{bmatrix}q_0 \\ q_1\end{bmatrix}
+\begin{bmatrix}\cos m\theta_j & -\sin m\theta_j \\ \sin m\theta_j & \cos m\theta_j \end{bmatrix} \begin{bmatrix}q_{2j} \\ q_{2j-1}\end{bmatrix}
 $$
 
 ```python
 def apply_rotary(x, sinusoidal_pos=None):
     if sinusoidal_pos is None:
         return x
-    sin, cos = sinusoidal_pos
-    # x.shape [batch, seq_len, 2]
-    x1, x2 = x[..., 0::2], x[..., 1::2]
-    # [cos_nθ, -sin_nθ] [x1]
-    # [sin_nθ,  cos_nθ] [x2]
-    # => [x1 * cos_nθ - x2 * sin_nθ, x1 * sin_nθ + x2 * cos_nθ]
-    # 苏神的rotary，使用了下面的计算方法。
-    # return torch.stack([x1 * cos - x2 * sin, x1 * sin + x2 * cos], dim=-1).flatten(-2, -1)
-    # 考虑到矩阵乘法torch.einsum("bhmd,bhnd->bhmn", q, k)，因此可以直接在最后一个维度拼接（无需奇偶交错）
-    return torch.cat([x1 * cos - x2 * sin, x1 * sin + x2 * cos], dim=-1)
+    sin, cos = sinusoidal_pos # [seq_len, hidden_dim//2]
+    # x.shape [batch, seq_len, hidden_dim]
+    x_even, x_odd = x[..., 0::2], x[..., 1::2]
+    # [cos_nθ, -sin_nθ] [x_even]
+    # [sin_nθ,  cos_nθ] [x_odd]
+    # => [x_even * cos_nθ - x_odd * sin_nθ, x_even * sin_nθ + x_odd * cos_nθ]
+    return torch.cat([x_even * cos - x_odd * sin, x_even * sin + x_odd * cos], dim=-1)
 ```
