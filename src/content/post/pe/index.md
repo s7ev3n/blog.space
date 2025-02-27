@@ -424,7 +424,7 @@ $$
 \end{bmatrix} \begin{bmatrix}q_0 \\ q_1 \\ q_2 \\ q_3 \\ \vdots \\ q_{d-2} \\ q_{d-1}\end{bmatrix}}
 $$
 
-由于矩阵过于稀疏，使用下面方式计算：
+由于矩阵过于稀疏，使用下面公式更简洁：
 $$
 \begin{bmatrix}q_0 \\ q_1 \\ q_2 \\ q_3 \\ \vdots \\ q_{d-2} \\ q_{d-1} 
 \end{bmatrix}\otimes\begin{bmatrix}\cos m\theta_0 \\ \cos m\theta_0 \\ \cos m\theta_1 \\ \cos m\theta_1 \\ \vdots \\ \cos m\theta_{d/2-1} \\ \cos m\theta_{d/2-1} 
@@ -435,3 +435,44 @@ $$
 其中，$\otimes$表示逐元素相乘，$\theta_j = 10000^{−\frac{2j}{d}}$与三角函数编码一致。
 
 ### RoPE的实现
+
+> RoPE的代码有好几种 !
+
+苏神在[roformer](https://github.com/ZhuiyiTechnology/roformer)有简单代码实现，和上一节最后的实现公式完全一致：
+```python
+sinusoidal_pos.shape = [1, seq_len, hidden_size] # Sinusoidal position embeddings
+qw.shape = [batch_size, seq_len, num_heads, hidden_size]  # query hiddens
+kw.shape = [batch_size, seq_len, num_heads, hidden_size]  # key hiddens
+
+# 这里cos是奇数部分，sin是偶数部分，但是并且重复了一次后和原hidden_size长度一致
+cos_pos = repeat_elements(sinusoidal_pos[..., None, 1::2], rep=2, axis=-1)
+sin_pos = repeat_elements(sinusoidal_pos[..., None, ::2], rep=2, axis=-1)
+# 首先从qw中提取出奇数和偶数索引，而qw_odd/even: [batch_size, seq_len, num_heads, D//2]
+# 重要的是沿着第5维度stack，这样stack后得到的shape是 [batch_size, seq_len, num_heads, 2, D//2]
+qw2 = stack([-qw[..., 1::2], qw[..., ::2]], axis=4)
+# reshape操作就有意思了，因为在2这个维度是奇数和偶数，reshape会原维度D，会实现交叉奇偶的效果
+# 正好是上一节公式中交替变换的向量
+qw2 = reshape(qw2, shape(qw))
+qw = qw * cos_pos + qw2 * sin_pos
+```
+
+另外有人使用`pytorch`实现了另一个[版本](https://github.com/JunnYu/RoFormer_pytorch)，主要是借助公式：
+$$
+\begin{bmatrix}\cos m\theta & -\sin m\theta\\ \sin m\theta & \cos m\theta\end{bmatrix} \begin{bmatrix}q_0 \\ q_1\end{bmatrix}
+$$
+
+```python
+def apply_rotary(x, sinusoidal_pos=None):
+    if sinusoidal_pos is None:
+        return x
+    sin, cos = sinusoidal_pos
+    # x.shape [batch, seq_len, 2]
+    x1, x2 = x[..., 0::2], x[..., 1::2]
+    # [cos_nθ, -sin_nθ] [x1]
+    # [sin_nθ,  cos_nθ] [x2]
+    # => [x1 * cos_nθ - x2 * sin_nθ, x1 * sin_nθ + x2 * cos_nθ]
+    # 苏神的rotary，使用了下面的计算方法。
+    # return torch.stack([x1 * cos - x2 * sin, x1 * sin + x2 * cos], dim=-1).flatten(-2, -1)
+    # 考虑到矩阵乘法torch.einsum("bhmd,bhnd->bhmn", q, k)，因此可以直接在最后一个维度拼接（无需奇偶交错）
+    return torch.cat([x1 * cos - x2 * sin, x1 * sin + x2 * cos], dim=-1)
+```
