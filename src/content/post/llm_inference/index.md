@@ -117,7 +117,9 @@ uptraining将已经训练好的MHA的模型更好的转换成MQA的模型，而�
 :::
 
 ### Grouped Query Attention
-[GQA](https://arxiv.org/pdf/2305.13245)是MHA和MQA的一般情况，其想法也很直接：如果一组`Key`和`Value`性能下降，那么多搞几组`Key`和`Value`吧。
+[GQA](https://arxiv.org/pdf/2305.13245)是MHA和MQA的一般情况，其想法也很直接：如果一组`Key`和`Value`性能下降，那么多搞几组`Key`和`Value`吧。使用论文中的图例来说明：
+
+![gqa](./figs/gqa.png)
 
 ### Multi-head Latent Attention
 MLA出现在[Deepseek-V2](https://arxiv.org/abs/2405.04434)中，实现了比MHA性能好，并且KV Cache大幅降低！
