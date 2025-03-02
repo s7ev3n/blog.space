@@ -40,9 +40,9 @@ def generate(self, input_idx, max_new_tokens, temperature=1.0):
 假设`in_tokens`中有目前已经有两个`token`，即`in_tokens = [t1, t2]`，进入Transformer的每一层的MHA中每个head时，会将`t1`通过线性层映射成`q1, k1, v1`，然后计算注意力，为了说明问题只保留`q,k,v`的计算：
 ```
 [q1*k1.T q1*k2.T] [1 0] [v1] = (q1 * k1.T) * v1
-[q2*k2.T q2*k2.T] [1 1] [v2] = (q2 * k2.T) * v1 + (q2 * k2.T) * v2
+[q2*k1.T q2*k2.T] [1 1] [v2] = (q2 * k1.T) * v1 + (q2 * k2.T) * v2
 ```
-然后使用`(q2*k2.T)*v1+(q2*k2.T)*v2`去预测下一个`token`，称之为`t3`。现在`in_tokens=[t1, t2, t3]`，输入到模型中再次进行计算：
+然后使用`(q2*k1.T)*v1+(q2*k2.T)*v2`去预测下一个`token`，称之为`t3`。现在`in_tokens=[t1, t2, t3]`，输入到模型中再次进行计算：
 ```
 [q1*k1.T q1*k2.T q1*k3.T] [1 0 0] [v1] = (q1 * k1.T) * v1
 [q2*k1.T q2*k2.T q2*k3.T] [1 1 0] [v2] = (q2 * k1.T) * v1 + (q2 * k2.T) * v2
@@ -54,20 +54,20 @@ def generate(self, input_idx, max_new_tokens, temperature=1.0):
 为什么不缓存`query`呢？看了上面的推导，应该很容易知道为什么不需要缓存上一轮的query！ ：）
 :::
 
-KV Cache的实现是在每一层Transformer层中的Attention部分，因此KV Cache的shape都是`b, t, num_head, head_dim`，方便和`past_key_value`直接拼接，这篇博客[^1]的实现比较清晰：
+KV Cache的实现是在每一层Transformer层中的Attention部分，和上一层的`past_key_value`(即KV Cache)直接拼接，这篇博客[^1]的实现比较清晰：
 ```python
-def mha(x, c_attn, c_proj, n_head, kvcache=None):  # [n_seq, n_embd] -> [n_seq, n_embd]
+def mha(x, c_attn, c_proj, n_head, past_key_value=None):  # [n_seq, n_embd] -> [n_seq, n_embd]
     # qkv projection
-    # n_seq = 1 when we pass kvcache, so we will compute new_q, new_k and new_v
+    # n_seq = 1 when we pass past_key_value, so we will compute new_q, new_k and new_v
     x = linear(x, **c_attn)  # [n_seq, n_embd] -> [n_seq, 3*n_embd]
 
     # split into qkv
     qkv = np.split(x, 3, axis=-1)  # [n_seq, 3*n_embd] -> [3, n_seq, n_embd]
 
-    if kvcache:
+    if past_key_value:
         # qkv
         new_q, new_k, new_v = qkv  # new_q, new_k, new_v = [1, n_embd]
-        old_k, old_v = kvcache
+        old_k, old_v = past_key_value
         k = np.vstack([old_k, new_k]) # k = [n_seq, n_embd], where n_seq = prev_n_seq + 1
         v = np.vstack([old_v, new_v]) # v = [n_seq, n_embd], where n_seq = prev_n_seq + 1
         qkv = [new_q, k, v]
@@ -78,7 +78,7 @@ def mha(x, c_attn, c_proj, n_head, kvcache=None):  # [n_seq, n_embd] -> [n_seq, 
     qkv_heads = list(map(lambda x: np.split(x, n_head, axis=-1), qkv))  # [3, n_seq, n_embd] -> [n_head, 3, n_seq, n_embd/n_head]
 
     # causal mask to hide future inputs from being attended to
-    if kvcache:
+    if past_key_value:
         causal_mask = np.zeros((1, k.shape[0]))
     else:
         causal_mask = (1 - np.tri(x.shape[0])) * -1e10  # [n_seq, n_seq]
@@ -93,8 +93,12 @@ def mha(x, c_attn, c_proj, n_head, kvcache=None):  # [n_seq, n_embd] -> [n_seq, 
     return x, current_cache
 
 ```
-[^1]: [Speeding up the GPT - KV cache](https://dipkumar.dev/becoming-the-unbeatable/posts/gpt-kvcache/)
+[^1]: [Speeding up the GPT - KV cache](https://dipkumar.dev/becoming-the-unbeatable/posts/gpt-past_key_value/)
 
-## Transformer Inference Arithmetic
+:::important
+随着输入`in_tokens`变成超级长（1 Million），KV Cache也会成为显存杀手，其大小可能会远超模型权重，也成为后续工作优化的目标。
+:::
+
+## Inference Arithmetic
 [分析transformer模型的参数量、计算量、中间激活、KV cache](https://zhuanlan.zhihu.com/p/624740065)
 [Transformer Inference Arithmetic](https://kipp.ly/transformer-inference-arithmetic/)
