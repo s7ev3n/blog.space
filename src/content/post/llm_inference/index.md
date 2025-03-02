@@ -2,7 +2,7 @@
 title: "LLM Inference"
 description: "llm inference notes"
 publishDate: "13 July 2024"
-updatedDate: "1 Feb 2025"
+updatedDate: "1 Dec 2024"
 tags: ["tech/llm/optimization"]
 draft: false
 ---
@@ -98,6 +98,31 @@ def mha(x, c_attn, c_proj, n_head, past_key_value=None):  # [n_seq, n_embd] -> [
 :::important
 随着输入`in_tokens`变成超级长（1 Million），KV Cache也会成为显存杀手，其大小可能会远超模型权重，也成为后续工作优化的目标。
 :::
+
+## MHA->MQA->GQA->MLA 
+在[Multi-Head Attention](https://www.s7ev3n.space/posts/transformer/#multi-head-attention)中，输入序列Embedding的`d_model`会被切分成`n_head`组，然后分别经过注意力计算后再`concat`起来还原`d_model`的长度。前面KV Cache最后提到过，当输入序列非常长，KV Cache会成为显存杀手，成为优化的目标，下面的MQA(Multi-Query Attention)，`Grouped-Query Attetion`和`Multi-head Latent Attention`都是对MHA的改进！
+
+### Multi-Query Attention
+MQA来自于论文[Fast Transformer Decoding: One Write-Head is All
+You Need](https://arxiv.org/pdf/1911.02150)，来自于Transformer论文的第二作者Noam Shazeer。
+
+想法很简单：只对`Query`进行切分成`n_head`组，形状变为`(b, n_heads, t, d_h)`，但是`Key`和`Value`直接通过线性层映射到形状`(b, t, d_h)`，如此以来`W_k`和`W_v`的参数量急剧减少！注意，此时`Key`和`Value`和`Query`的形状是不能直接矩阵相乘的，可以利用广播Boardcast原则，在`Key`和`Value`的第二个维度增加1，即`(b, 1, t, d_h)`，这样会在矩阵乘法的时候自动在`n_haeds`的维度扩充进行相乘。
+
+但是，MQA有明显的缺点：性能下降严重！需要完全重新训练MQA的模型，才能带来推理速度的加快。模型训练异常昂贵，训练性能下降的MQA不太划算。
+
+:::important
+如果搜索引擎搜索MQA，可能会见到mean pool和uptrain等奇怪的术语，这些并不出现在MQA的原论文中，而是在下面章节的[GQA](https://arxiv.org/pdf/2305.13245)论文中的uptraining章节。
+
+uptraining将已经训练好的MHA的模型更好的转换成MQA的模型，而不用重新训练。具体操作分为两部分：1）将使用MHA训练好的checkpoint中的所有头的`W_k`和`W_v`投影矩阵进行平均值，从而获得类似MQA原文中的、单个的`W_k`和`W_v`，即所谓的mean pool；2）对于合并后的模型，再使用训练非常小的轮次，让模型适应合并的权重，相当于训练得到了新的、省KV Cache的部署模型。实验发现这样比MQA的性能更好，而且更省计算。
+:::
+
+### Grouped Query Attention
+[GQA](https://arxiv.org/pdf/2305.13245)是MHA和MQA的一般情况，其想法也很直接：如果一组`Key`和`Value`性能下降，那么多搞几组`Key`和`Value`吧。
+
+### Multi-head Latent Attention
+MLA出现在[Deepseek-V2](https://arxiv.org/abs/2405.04434)中，实现了比MHA性能好，并且KV Cache大幅降低！
+
+[^2]: [缓存与效果的极限拉扯：从MHA、MQA、GQA到MLA](https://spaces.ac.cn/archives/10091)
 
 ## Inference Arithmetic
 [分析transformer模型的参数量、计算量、中间激活、KV cache](https://zhuanlan.zhihu.com/p/624740065)
