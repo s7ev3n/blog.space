@@ -10,7 +10,7 @@ draft: false
 > 由于部署和调用LLM模型需求急速增加，迅速催生了LLM推理这一领域，围绕如何加快推理速度和成本首先从学术界出现大量结合系统领域知识的工作。本文是学习LLM推理的一些笔记。
 
 ## KV Cache
-KV Cache是LLM推理优化中出现的第一个优化方法。理解KV Cache首先要了解LLM的推理过程的两点重要属性：1）**自回归(Autoregressive)**和2）Causal Masking。
+KV Cache是LLM推理优化中出现的第一个优化方法。理解KV Cache首先要了解LLM的推理过程的两点重要属性：1）**自回归(Autoregressive)**，2）Causal Masking。
 
 自回归预测即next_token会加入到之前模型的输出中，再进行下一轮的预测。代码更能说明这个过程，见注释：
 ```python
@@ -115,7 +115,7 @@ You Need](https://arxiv.org/pdf/1911.02150)，来自于Transformer论文的第�
 :::important
 如果搜索引擎搜索MQA，可能会见到mean pool和uptrain等奇怪的术语，这些并不出现在MQA的原论文中，而是在下面章节的[GQA](https://arxiv.org/pdf/2305.13245)论文中的uptraining章节。
 
-uptraining将已经训练好的MHA的模型更好的转换成MQA的模型，而不用重新训练。具体操作分为两部分：1）将使用MHA训练好的checkpoint中的所有头的`W_k`和`W_v`投影矩阵进行平均值，从而获得类似MQA原文中的、单个的`W_k`和`W_v`，即所谓的mean pool；2）对于合并后的模型，再使用训练非常小的轮次，让模型适应合并的权重，相当于训练得到了新的、省KV Cache的部署模型。实验发现这样比MQA的性能更好，而且更省计算。
+uptraining将已经训练好的MHA的模型更好的转换成MQA的模型，而不用从头训练。具体操作分为两部分：1）将使用MHA训练好的checkpoint中的所有头的`W_k`和`W_v`投影矩阵进行平均值，从而获得类似MQA原文中的、单个的`W_k`和`W_v`，即所谓的mean pool；2）对于合并后的模型，再使用训练非常小的轮次，让模型适应合并的权重，相当于训练得到了新的、省KV Cache的部署模型。实验发现这样比MQA的性能更好，而且更省计算。
 :::
 
 ### Grouped Query Attention
@@ -190,33 +190,64 @@ MLA出现在[Deepseek-V2](https://arxiv.org/abs/2405.04434)技术报告中，实
 
 ![mla](./figs/mla.png)
 
-使用一个新的latent向量$\mathbf{c_i}$作为Key和Value共同的表示，$\mathbf{c_i}$的维度`d_c`远小于输入Embedding的维度`d_model`，并且只缓存这个$\mathbf{c_i}$。论文中使用一个下投影(down-projection)矩阵将输入从`d_model`投影到`d_c`，这个过程被称为Low-Rank Key-Value Joint Compression。按照苏神的文章[^2]，其实GQA也做了低秩投影，所以它并不是MLA的主要改进点。GQA或者MQA在低秩投影后和Query相乘时，直接复制Key和Value，这相当于削弱了KV的表达。MLA使用了上投影(up-projection)将Key和Value维度又变成`d_model`这样Key和Value不是简单的复制：
+使用一个新的向量$\mathbf{c}^{KV}$作为Key和Value共同的latent向量，$\mathbf{c}^{KV}$的维度`d_c`远小于输入Embedding的维度`d_model`，并且只缓存这个$\mathbf{c}^{KV}$用于推理。论文中使用一个下投影(down-projection)矩阵将输入从`d_model`投影到`d_c`，这个过程被称为Low-Rank Key-Value Joint Compression。按照苏神的文章[^2]，其实GQA也做了低秩投影，所以它并不是MLA的主要改进点。GQA或者MQA在低秩投影后和Query相乘时，直接复制Key和Value，这相当于削弱了KV的表达。MLA使用了上投影(up-projection)将Key和Value维度又变成`d_model`，这样Key和Value不是简单的复制：
 
 $$
 \begin{aligned}
-    \mathbf{c}_t^{KV} &= \mathbf{h}_t W^{DKV} \\
-    \mathbf{k}_t^{C} &= \mathbf{c}_t^{KV} W^{UK} \\
-    \mathbf{v}_t^{C} &= \mathbf{c}_t^{KV} W^{UV}
+    \mathbf{c}_t^{KV} &= \mathbf{h}_t W^{DKV} \in \mathbb{R}^{1 \times d_c} \\
+    \mathbf{k}_t^{C} &= \mathbf{c}_t^{KV} W^{UK} \in \mathbb{R}^{1 \times d_{model}} \\
+    \mathbf{v}_t^{C} &= \mathbf{c}_t^{KV} W^{UV} \in \mathbb{R}^{1 \times d_{model}}
 \end{aligned}
 $$
 其中，$\mathbf{h}_t\in \mathbb{R}^{1 \times d_{model}}$是$t$时刻的输入Embedding，$\mathbf{c}_t^{KV} \in \mathbb{R}^{1 \times d_c}$是Key和Value共享的压缩后的向量，$W_{DKV} \in \mathbb{R}^{d_{model} \times d_c}$是down-projection($D$表示的是Down)，矩阵
 $W_{UK},W_{UV} \in \mathbb{R}^{d_{c} \times d_{model}}$是up-projection矩阵($U$表示的是Up)，有点像CNN中的bottleneck。
 
-问题来了，如果最后还是还原到$\mathbf{k}_t^{C}$和$\mathbf{v}_t^{C}$，和原来MHA的方法一样，还需要Cache这些，这并没有节省推理时候的现存。实际上，在训练过程中，Key和Value和原来MHA是一样的，并没有什么优化。
+:::important
+这里的$\mathbf{k}_t^{C}$和$\mathbf{v}_t^{C}$是要和所有的Head的Query共享的，像MQA一样。
+:::
 
-但是MLA发现，如果结合注意力Attention计算的矩阵相乘：
+问题来了，如果最后还是还原到$\mathbf{k}_t^{C}$和$\mathbf{v}_t^{C}$并缓存，那这和原来MHA的方法一样，并没有节省推理时候的显存。实际上，在训练过程中，Key和Value和原来MHA是一样的，并没有什么优化。
+
+但是MLA发现，如果结合注意力Attention计算的内积相乘：
 $$
 \mathbb{q}_t \mathbf{k}_t^{\top} = 
 (\mathbf{h}_t W^Q)(\mathbf{c}_t^{KV}W^{UK})^{\top} =
 \mathbf{h}_t (W^Q {W^{UK}}^{\top}){\mathbf{c}_t^{KV}}^{\top}
 $$
 
-你会发现两者相乘，**不需要中间的$\mathbf{k}_t^{C}$和$\mathbf{v}_t^{C}$**！$W^Q {W^{UK}}^{\top}$在推理阶段可以合并为一个矩阵，作为就只要保存$\mathbf{c}_t^{KV}$。
+你会发现两者相乘，**不需要中间的$\mathbf{k}_t^{C}$和$\mathbf{v}_t^{C}$**！$W^Q {W^{UK}}^{\top}\in \mathbb{R}^{d_{model}\times d_c}$在推理阶段可以合并为一个矩阵，只要保存$\mathbf{c}_t^{KV}$。
 
+:::important
+但就像苏神在文章[^2]说的$W^Q {W^{UK}}^{\top}$还是有精度问题的，尤其用低精度BF16训练时。
+:::
 
-但就像苏神在文章[^2]说的$W^Q {W^{UK}}^{\top}$还是有精度问题的，尤其用低精度训练时。
+还有$\mathbf{v}_t^{C}$怎么办？我们知道对每个Head的$\mathbf q_{t,i}$的输出有：
+$$
+\begin{aligned}
+    \mathbf{o}_{t,i} &= \sum_{j=1}^{t} \mathrm{softmax_j}\left(\frac{\mathbf q_{t,i} \mathbf {k_{t}^{C}}^\top }{\sqrt{d_h}}\right) \cdot \mathbf{v}_t^{C} \\
+    \mathbf{u}_t &=  [\mathbf{o}_{t,1}; \mathbf{o}_{t,2};...;\mathbf{o}_{t,n_h}] \mathbf{c}_t^{KV} W^{UV} W^{O} =
+    \mathbf{o}_t \mathbf{c}_t^{KV} W^{UV} W^{O}
+\end{aligned}
+$$
+即最后还有一个线性投影$W^{O}$将attention计算之后的值做最后的投影输出，这样最后$W^{UV} W^{O}$也可以合并成一个矩阵！
 
+至此，MLA已经实现了推理时只缓存类似MQA的$\mathbf{c}_t^{KV}$，并且可以把矩阵合并到一起！另外需要说的是，最后对Query也进行了类似的压缩，虽然不能再推理时起到省KV Cache的作用，但是训练时可以省一部分激活值的内存。
 
+但是，还有一个问题，现在MLA不支持[RoPE](https://www.s7ev3n.space/posts/pe/)，我们知道RoPE是一种在Attention计算时候加入的和绝对位置相关的乘性位置编码，作用于Query和Key，如果尝试给它们加入RoPE，假设RoPE的旋转矩阵是$R_t$:
+$$
+\mathbb{q}_m \mathbf{k}_n^{\top} = 
+\mathbf{h}_m (W^Q R_{m-n} {W^{UK}}^{\top}){\mathbf{c}_n^{KV}}^{\top}
+$$
+这样矩阵就无法合并成一个固定的矩阵了，而是带着相对位置向量矩阵$R_{m-n}$。
+
+解决方案是让Query和Key都新增$d_r$，然后仅在$d_r$维度上使用RoPE，而原来的$d_c$维度依旧使用原MLA的矩阵乘法，文中称为Decoupled RoPE:
+$$
+\begin{aligned}
+    \mathbf{q}_t &=[\mathbf{c}_t^{Q} W^{DQ},RoPE(\mathbf{c}_{t}^{R}W^{QR})] \in \mathbb{R}^{d_c+d_r} \\
+    \mathbf{k}_t &= [\mathbf{c}_t^{KV}W^{UK},RoPE(\mathbf{h}_{t}^{R}W^{KR})] \in \mathbb{R}^{d_c+d_r}
+\end{aligned}
+$$
+根据矩阵分块相乘，前$d_c$维度只会自己相乘，后$d_r$维度自己相乘，后$d_r$维度带着相对位置关系编码。因此，需要额外的缓存$\mathbf{k}_t$中的$d_c$部分。
 
 [^2]: [缓存与效果的极限拉扯：从MHA、MQA、GQA到MLA](https://spaces.ac.cn/archives/10091)
 
