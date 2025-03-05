@@ -99,8 +99,10 @@ def mha(x, c_attn, c_proj, n_head, past_key_value=None):  # [n_seq, n_embd] -> [
 随着输入`in_tokens`变成超级长（1 Million），KV Cache也会成为显存杀手，其大小可能会远超模型权重，也成为后续工作优化的目标。
 :::
 
-## MHA->MQA->GQA->MLA 
-在[Multi-Head Attention](https://www.s7ev3n.space/posts/transformer/#multi-head-attention)中，输入序列Embedding的`d_model`会被切分成`n_head`组，然后分别经过注意力计算后再`concat`起来还原`d_model`的长度。前面KV Cache最后提到过，当输入序列非常长，KV Cache会成为显存杀手，成为优化的目标，下面的MQA(Multi-Query Attention)，`Grouped-Query Attetion`和`Multi-head Latent Attention`都是对MHA的改进！
+## Multi-Head Attention的优化
+在[Multi-Head Attention](https://www.s7ev3n.space/posts/transformer/#multi-head-attention)中，输入序列Embedding的`d_model`会被切分成`n_head`组，然后分别经过注意力计算后再`concat`起来还原`d_model`的长度。前面KV Cache最后提到过，当输入序列非常长，KV Cache会成为显存杀手，它就成为优化的目标！
+
+下面的`Multi-Query Attention (MQA)` -> `Grouped-Query Attetion (GQA)` -> `Multi-head Latent Attention (MLA)`都是对MHA的改进！
 
 ### Multi-Query Attention
 MQA来自于论文[Fast Transformer Decoding: One Write-Head is All
@@ -117,12 +119,95 @@ uptraining将已经训练好的MHA的模型更好的转换成MQA的模型，而�
 :::
 
 ### Grouped Query Attention
-[GQA](https://arxiv.org/pdf/2305.13245)是MHA和MQA的一般情况，其想法也很直接：如果一组`Key`和`Value`性能下降，那么多搞几组`Key`和`Value`吧。使用论文中的图例来说明：
+[GQA](https://arxiv.org/pdf/2305.13245)是MHA和MQA的一般情况，其想法也很直接：如果一组`Key`和`Value`性能下降，那么多搞几组`Key`和`Value`吧。
 
-![gqa](./figs/gqa.png)
+让Deepseek对上面的`mha`改造成`gqa`:
+
+<details>
+<summary><code>gqa</code>实现</summary>
+
+```python
+def gqa(x, c_attn, c_proj, n_head, n_group, past_key_value=None):  # [n_seq, n_embd] -> [n_seq, n_embd]
+    assert n_head % n_group == 0, "n_head must be divisible by n_group"
+    
+    # 计算每个头的维度
+    n_embd_input = x.shape[-1]
+    d = n_embd_input // n_head  # 每个头的维度
+    
+    # QKV投影
+    x = linear(x, **c_attn)  # [n_seq, n_embd_input] -> [n_seq, (n_head + 2*n_group)*d]
+    
+    # 分割Q、K、V
+    q_size = n_head * d
+    k_size = n_group * d
+    v_size = n_group * d
+    
+    q = x[:, :q_size]
+    k = x[:, q_size : q_size + k_size]
+    v = x[:, q_size + k_size : q_size + k_size + v_size]
+    
+    # 合并历史KV缓存
+    if past_key_value:
+        old_k, old_v = past_key_value
+        k = np.vstack([old_k, k])
+        v = np.vstack([old_v, v])
+    current_cache = [k, v]
+    
+    # 分割成头
+    q_heads = np.split(q, n_head, axis=-1)  # [n_head, n_seq, d]
+    k_heads = np.split(k, n_group, axis=-1)  # [n_group, n_seq, d]
+    v_heads = np.split(v, n_group, axis=-1)
+    
+    # 因果掩码
+    if past_key_value:
+        causal_mask = np.zeros((q.shape[0], k.shape[0]))  # 允许关注所有历史位置
+    else:
+        causal_mask = (1 - np.tri(q.shape[0], k.shape[0])) * -1e10  # 下三角掩码
+    
+    # 计算每个查询头对应的组
+    group_size = n_head // n_group
+    out_heads = []
+    for i in range(n_head):
+        g = i // group_size  # 确定当前头所属的组
+        q_i = q_heads[i]
+        k_g = k_heads[g]
+        v_g = v_heads[g]
+        out_head = attention(q_i, k_g, v_g, causal_mask)
+        out_heads.append(out_head)
+    
+    # 合并多头输出
+    x = np.hstack(out_heads)
+    
+    # 输出投影
+    x = linear(x, **c_proj)
+    
+    return x, current_cache
+```
+</details>
 
 ### Multi-head Latent Attention
-MLA出现在[Deepseek-V2](https://arxiv.org/abs/2405.04434)中，实现了比MHA性能好，并且KV Cache大幅降低！
+MLA出现在[Deepseek-V2](https://arxiv.org/abs/2405.04434)技术报告中，实现了比MHA性能好，并且KV Cache大幅降低！从下图中，体会一下从各种MHA优化的区别：
+
+![mla](./figs/mla.png)
+
+使用一个新的latent向量$\mathbf{c_i}$作为Key和Value共同的表示，$\mathbf{c_i}$的维度`d_c`远小于输入Embedding的维度`d_model`，并且只缓存这个$\mathbf{c_i}$。论文中使用一个下投影(down-projection)矩阵将输入从`d_model`投影到`d_c`，这个过程被称为Low-Rank Key-Value Joint Compression。按照苏神的文章[^2]，其实GQA也做了低秩投影，所以它并不是MLA的主要改进点。GQA或者MQA在低秩投影后和Query相乘时，直接复制Key和Value，这相当于削弱了KV的表达。MLA使用了上投影(up-projection)将Key和Value维度又变成`d_model`这样Key和Value不是简单的复制：
+
+$$
+\begin{aligned}
+    \mathbf{c}_t^{KV} &= W^{DKV}\mathbf{h}_t \\
+    \mathbf{k}_t^{C} &= W^{UK}\mathbf{c}_t^{KV} \\
+    \mathbf{v}_t^{C} &= W^{UV}\mathbf{c}_t^{KV}
+\end{aligned}
+$$
+其中，$\mathbf{h}_t\in \mathbb{R}^{d_{model}}$是$t$时刻的输入Embedding，$\mathbf{c}_t^{KV} \in \mathbb{R}^{d_c}$是Key和Value共享的压缩后的向量，$W_{DKV} \in \mathbb{R}^{d_c \times d_{model}}$是down-projection($D$表示的是Down)，矩阵
+$W_{UK},W_{UV} \in \mathbb{R}^{d_{model} \times d_c}$是up-projection矩阵($U$表示的是Up)，有点像CNN中的·
+
+问题来了，如果最后还是还原到$\mathbf{k}_t^{C}$和$\mathbf{v}_t^{C}$，和原来MHA的方法一样，还需要Cache这些，这并没有节省推理时候的现存。实际上，在训练过程中，Key和Value和原来MHA是一样的，并没有什么优化。
+
+但是MLA发现，如果结合注意力Attention计算的矩阵相乘，可以省略Key和Value：
+$$
+\mathbb{q}_t \mathbf{k}_t^{\top} = (W_q \mathbf{x}_t)(W^{UK}\mathbf{c}_t^{KV})^{\top}
+$$
 
 [^2]: [缓存与效果的极限拉扯：从MHA、MQA、GQA到MLA](https://spaces.ac.cn/archives/10091)
 
