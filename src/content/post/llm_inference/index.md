@@ -194,20 +194,29 @@ MLA出现在[Deepseek-V2](https://arxiv.org/abs/2405.04434)技术报告中，实
 
 $$
 \begin{aligned}
-    \mathbf{c}_t^{KV} &= W^{DKV}\mathbf{h}_t \\
-    \mathbf{k}_t^{C} &= W^{UK}\mathbf{c}_t^{KV} \\
-    \mathbf{v}_t^{C} &= W^{UV}\mathbf{c}_t^{KV}
+    \mathbf{c}_t^{KV} &= \mathbf{h}_t W^{DKV} \\
+    \mathbf{k}_t^{C} &= \mathbf{c}_t^{KV} W^{UK} \\
+    \mathbf{v}_t^{C} &= \mathbf{c}_t^{KV} W^{UV}
 \end{aligned}
 $$
-其中，$\mathbf{h}_t\in \mathbb{R}^{d_{model}}$是$t$时刻的输入Embedding，$\mathbf{c}_t^{KV} \in \mathbb{R}^{d_c}$是Key和Value共享的压缩后的向量，$W_{DKV} \in \mathbb{R}^{d_c \times d_{model}}$是down-projection($D$表示的是Down)，矩阵
-$W_{UK},W_{UV} \in \mathbb{R}^{d_{model} \times d_c}$是up-projection矩阵($U$表示的是Up)，有点像CNN中的·
+其中，$\mathbf{h}_t\in \mathbb{R}^{1 \times d_{model}}$是$t$时刻的输入Embedding，$\mathbf{c}_t^{KV} \in \mathbb{R}^{1 \times d_c}$是Key和Value共享的压缩后的向量，$W_{DKV} \in \mathbb{R}^{d_{model} \times d_c}$是down-projection($D$表示的是Down)，矩阵
+$W_{UK},W_{UV} \in \mathbb{R}^{d_{c} \times d_{model}}$是up-projection矩阵($U$表示的是Up)，有点像CNN中的bottleneck。
 
 问题来了，如果最后还是还原到$\mathbf{k}_t^{C}$和$\mathbf{v}_t^{C}$，和原来MHA的方法一样，还需要Cache这些，这并没有节省推理时候的现存。实际上，在训练过程中，Key和Value和原来MHA是一样的，并没有什么优化。
 
-但是MLA发现，如果结合注意力Attention计算的矩阵相乘，可以省略Key和Value：
+但是MLA发现，如果结合注意力Attention计算的矩阵相乘：
 $$
-\mathbb{q}_t \mathbf{k}_t^{\top} = (W_q \mathbf{x}_t)(W^{UK}\mathbf{c}_t^{KV})^{\top}
+\mathbb{q}_t \mathbf{k}_t^{\top} = 
+(\mathbf{h}_t W^Q)(\mathbf{c}_t^{KV}W^{UK})^{\top} =
+\mathbf{h}_t (W^Q {W^{UK}}^{\top}){\mathbf{c}_t^{KV}}^{\top}
 $$
+
+你会发现两者相乘，**不需要中间的$\mathbf{k}_t^{C}$和$\mathbf{v}_t^{C}$**！$W^Q {W^{UK}}^{\top}$在推理阶段可以合并为一个矩阵，作为就只要保存$\mathbf{c}_t^{KV}$。
+
+
+但就像苏神在文章[^2]说的$W^Q {W^{UK}}^{\top}$还是有精度问题的，尤其用低精度训练时。
+
+
 
 [^2]: [缓存与效果的极限拉扯：从MHA、MQA、GQA到MLA](https://spaces.ac.cn/archives/10091)
 
