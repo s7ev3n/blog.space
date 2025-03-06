@@ -8,8 +8,31 @@ tags: ["tech/ml"]
 > 这里总结下各种遇到的有用的Loss Functions.
 
 ## Classification Loss Functions
+在介绍各种分类损失函数之前，我们先从交叉熵的定义开始。
 
 ### Cross Entropy and KL Divergence
+可以从两个角度来理解交叉熵：1）信息熵；2）极大似然估计。
+
+先从信息熵开始。什么是熵？
+熵是信息量的表达或者说度量，可以用$h(x) = -log(p(x))$来计算一个随机事件发生的熵，从公式可知，概率越小的随机变量发生了($X=x_{i}$)产生的熵越大，信息量越大。注，$log$以2为底，此时信息用bit(比特)量化。
+
+信息熵用下面公式进行表达：
+$$H[P] = \sum_i - P(i) \log P(i)$$
+从公式可以得知，**信息熵是对于所有可能随机变量$X$的取值的期望值，即所有可能发生事件所带来的信息量的期望**。
+
+相对熵，也叫KL散度(KL divergence)，它是一种距离的度量，描述两个分布或随机变量的统计距离。统计距离量化了两个统计对象之间的距离，统计对象可以是两个随机变量，两个概率分布或者样本，或者一个独立样本点和一个点群之间的距离，或者更加广泛的样本点。
+
+$$
+D_{KL}(p(x) \| q(x))=\sum_{i=1}^{n} p(x_{i}) \log \frac{p(x_{i})}{q(x_{i})}
+$$
+将$\log \frac{p(x_{i})}{q(x_{i})}$展开成$\log p(x_{i}) - \log q(x_{i})$ 带入上面的公式，可以推导得到信息熵、相对熵和交叉熵之间的关系：
+$$
+D_{KL}(p \| q) = CE(p, q) - H(p)
+$$
+KL散度可以理解为从p角度来看，q事件和p事件的差异性，这点需要搞清楚 $D_{KL}(p \| q)$ 的方向，因为它不是对称的，意味着一个分布 $P$ 到另一个分布 $Q$ 的距离不等于 $Q$ 到 $P$ 的.
+在进行KD Loss的计算时， $p_{student}$ 和 $p_{teacher}$ 要分清楚，答案是 $D_{KL}(p_{teacher} \| p_{student})$ ，即从Teacher角度看，Teacher和Student的差异性。
+
+
 
 ### Binary Cross-Entropy Loss
 BCE又称为Sigmoid Cross-Entropy Loss，适用于二分类任务，每个样本只有两个类别：正例和负例，公式：
@@ -18,15 +41,67 @@ BCE=-\frac{1}{N}\sum_{i=1}^{N}[y_i log(p_i) + (1-y_i)log(1-p_i)]
 $$
 其中，$y_i$是真实标签，即$0$或者$1$，$p_i$是模型预测为$1$的概率（$p_i$是使用Sigmoid函数计算），$N$是样本数量。
 
-代码上，
+当标签为$1$时，该样本贡献的损失是$-log(p_i)$，当标签为$0$时，该样本贡献的损失是$-log(1-p_i)$。
 
+```python
+def sigmoid(x):
+    return 1 / (1 + np.exp(-x))
 
-### Categorical Cross-Entropy loss
+def bce(inputs, targets, epsilon = 1e-15):
+    '''
+    BCE: -1/N*(yi*log(pi)+(1-yi)*log(1-pi))
+
+    inputs: (N, ), 模型输出的logits
+    targets: (N, )，标签，值为0或1
+    epsilon: 防止 log(0) 导致的数值问题
+    '''
+    probs = sigmoid(inputs)
+    probs = np.clip(probs, epsilon, 1 - epsilon)
+    loss = -np.mean(targets * np.log(probs) + (1 - targets) * np.log(1 - probs))
+
+    return loss
+```
+
+### Categorical Cross-Entropy Loss
+Categorical Cross-Entropy Loss又被称为Softmax Cross-Entropy，适用于单标签多分类任务，即某样本只属于某一个类别：
+$$
+CE=-\frac{1}{N}\sum_{i=1}^{N}log(p_i)
+$$
+```python
+def softmax(x):
+    '''
+    Args:
+    x: (N, C)，俗称logits，即每个类别的分数，C表示类别的数量
+
+    Returns:
+    ret: (N, C)，表示在每个类别上的概率
+    '''
+    # softmax计算先减去最大值，保持数值溢出，维持数值计算稳定
+    exps = np.exp(logits - np.max(logits, axis=1, keepdims=True))
+    return exps / np.sum(exps, axis=1, keepdims=True)
+
+def ce(inputs, targets, epsilon = 1e-15):
+    '''
+    CE = -1/N*log(pi)
+
+    inputs: (N, C), 模型输出的logits
+    targets: (N, )，标签，值为类别的序号
+    epsilon: 防止 log(0) 导致的数值问题
+    '''
+    probs = softmax(inputs)
+    probs = np.clip(probs, epsilon, 1 - epsilon)
+    n_cls = inputs.shape[1]
+    # targets本应该变成一个one-hot向量(N, C)和probs直接相乘
+    # 这里采用的切片的方法probs[np.arange(n_cls), targets]
+    # 得到一个(N,)的向量，其中是每个样本在标签处的概率
+    loss = -np.mean(np.log(probs[np.arange(n_cls), targets]))
+    return loss
+```
 
 ### Focal Loss
 Focal Loss是计算机视觉中用于处理分类问题中类别不平的情况，即如果一个样本被模型高概率预测为正确，那么它对loss的贡献应该很小，而一个样本如果被模型预测错误，那么它对loss的贡献应该更大，即使模型更关注难样本。
 
-Focal Loss使用Sigmoid函数，也应该被认为是BCE Loss。
+Focal Loss使用Sigmoid函数，可以说是BCE Loss的改进。
 
 $$
 FL(p_t)=-\alpha_t(1-p_t)^{\gamma}log(p_t)
