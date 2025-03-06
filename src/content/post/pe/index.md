@@ -434,6 +434,10 @@ $$
 $$
 其中，$\otimes$表示逐元素相乘，$\theta_j = 10000^{−\frac{2j}{d}}$与三角函数编码一致。
 
+:::important
+三角函数位置编码，在输入Embedding序列进入Transformer Block之前加入，然后输入Embedding才会通过几个线性投影层分解为qkv；而RoPE利用了注意力Attention计算的向量内积，因此是在每次进行内积计算时候加入的，是在线性投影层之前。
+:::
+
 ### RoPE的实现
 
 > RoPE的代码有好几种 !
