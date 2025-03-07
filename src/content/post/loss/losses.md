@@ -65,7 +65,7 @@ def bce(inputs, targets, epsilon = 1e-15):
 ### Categorical Cross-Entropy Loss
 Categorical Cross-Entropy Loss又被称为Softmax Cross-Entropy，适用于单标签多分类任务，即某样本只属于某一个类别：
 $$
-CE=-\frac{1}{N}\sum_{i=1}^{N}log(p_i)
+CE=-\frac{1}{N}\sum_{j=1}^{N}\sum^{C}_{i} y_i log(p_i)
 $$
 ```python
 def softmax(x):
@@ -99,20 +99,31 @@ def ce(inputs, targets, epsilon = 1e-15):
 ```
 
 ### Focal Loss
-Focal Loss是计算机视觉中用于处理分类问题中类别不平的情况，即如果一个样本被模型高概率预测为正确，那么它对loss的贡献应该很小，而一个样本如果被模型预测错误，那么它对loss的贡献应该更大，即使模型更关注难样本。
-
-Focal Loss使用Sigmoid函数，可以说是BCE Loss的改进。
-
+Focal Loss是计算机视觉中用于处理分类问题中类别不平的情况，即如果一个样本被模型高概率预测为正确，那么它对loss的贡献应该很小，而一个样本如果被模型预测错误，那么它对loss的贡献应该更大，即使模型更关注难样本。Focal Loss使用Sigmoid函数，可以说是BCE Loss的改进：
 $$
 FL(p_t)=-\alpha_t(1-p_t)^{\gamma}log(p_t)
 $$
 
-代码实现：
+上面公式中的$p_t$是对BCE的简化，看起来更简洁，其实写成还是需要写成BCE的形式方便写代码：
+
+$$
+FL(p_i) = \sum_{i}^{N} -\alpha \cdot y_i \cdot (1 - p_i)^\gamma \cdot \log(p_i) - (1 - \alpha) \cdot (1 - y_i) \cdot p_i^\gamma \cdot \log(1 - p_i)
+$$
+
+:::important
+目标检测的分类任务是一个多分类的Loss，但是对Focal Loss的描述是对BCE二分类的改进，这是怎么回事？
+
+实际上，可以把每个类别的预测看作一个独立的二分类问题（即one-vs-rest方式），这种情况下Focal Loss就是在每个类别上对二分类交叉熵进行了调制，从而重点关注难分样本。多类别问题被拆解成了多个二分类问题。
+
+代码实现上，Focal Loss像是BCE和CCE的混合：即输入的target是one-hot，和CCE一致；然后对样本属于每个类别分别做BCE，再求和。
+:::
+
+代码实现参考[^1]：
 ```python
-def sigmoid_focal_loss(
+def py_sigmoid_focal_loss(
     inputs: torch.Tensor,
     targets: torch.Tensor,
-    alpha: float = -1,
+    alpha: float = 0.25,
     gamma: float = 2,
     reduction: str = "none",
 ) -> torch.Tensor:
@@ -135,14 +146,16 @@ def sigmoid_focal_loss(
     Returns:
         Loss tensor with the reduction option applied.
     """
-    inputs = inputs.float() # (N, C) N表示可以把BSZ等等维度合并的最终维度
-    targets = targets.float() # (N,) 表示N个样本的类别，是0还是1
+    inputs = inputs.float() # (N, C) N表示样本数量
+    targets = targets.float() # (N, C) 表示N个样本的类别，是one-hot
     p = torch.sigmoid(inputs)
     ce_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction="none")
+    # p_t的写法和前面的BCE一致
     p_t = p * targets + (1 - p) * (1 - targets)
     loss = ce_loss * ((1 - p_t) ** gamma)
 
     if alpha >= 0:
+        # alpha_t也是和BCE的类似写法
         alpha_t = alpha * targets + (1 - alpha) * (1 - targets)
         loss = alpha_t * loss
 
@@ -152,11 +165,89 @@ def sigmoid_focal_loss(
         loss = loss.sum()
 
     return loss
+
+class FocalLoss(nn.Module):
+    def __init__(self,
+                 use_sigmoid=True,
+                 gamma=2.0,
+                 alpha=0.25,
+                 reduction='mean',
+                 loss_weight=1.0):
+        """`Focal Loss <https://arxiv.org/abs/1708.02002>`_
+
+        Args:
+            use_sigmoid (bool, optional): Whether to the prediction is
+                used for sigmoid or softmax. Defaults to True.
+            gamma (float, optional): The gamma for calculating the modulating
+                factor. Defaults to 2.0.
+            alpha (float, optional): A balanced form for Focal Loss.
+                Defaults to 0.25.
+            reduction (str, optional): The method used to reduce the loss into
+                a scalar. Defaults to 'mean'. Options are "none", "mean" and
+                "sum".
+            loss_weight (float, optional): Weight of loss. Defaults to 1.0.
+        """
+        super(FocalLoss, self).__init__()
+        assert use_sigmoid is True, 'Only sigmoid focal loss supported now.'
+        self.use_sigmoid = use_sigmoid
+        self.gamma = gamma
+        self.alpha = alpha
+        self.reduction = reduction
+        self.loss_weight = loss_weight
+
+    def forward(self,
+                pred,
+                target,
+                weight=None,
+                avg_factor=None,
+                reduction_override=None):
+        """Forward function.
+
+        Args:
+            pred (torch.Tensor): The prediction, (N, C)
+            target (torch.Tensor): The learning label of the prediction, (N,), 类别编号
+            weight (torch.Tensor, optional): The weight of loss for each
+                prediction. Defaults to None.
+            avg_factor (int, optional): Average factor that is used to average
+                the loss. Defaults to None.
+            reduction_override (str, optional): The reduction method used to
+                override the original reduction method of the loss.
+                Options are "none", "mean" and "sum".
+
+        Returns:
+            torch.Tensor: The calculated loss
+        """
+        assert reduction_override in (None, 'none', 'mean', 'sum')
+        reduction = (
+            reduction_override if reduction_override else self.reduction)
+        if self.use_sigmoid:
+            if torch.cuda.is_available() and pred.is_cuda:
+                calculate_loss_func = sigmoid_focal_loss
+            else:
+                num_classes = pred.size(1)
+                # target要变成one-hot，注意这里的num_classes+1
+                # 这样把类别编号放在对的位置
+                # 后面再取到num_classes就是把背景或ignore类别放进去
+                target = F.one_hot(target, num_classes=num_classes + 1)
+                target = target[:, :num_classes]
+                calculate_loss_func = py_sigmoid_focal_loss
+
+            loss_cls = self.loss_weight * calculate_loss_func(
+                pred,
+                target,
+                weight,
+                gamma=self.gamma,
+                alpha=self.alpha,
+                reduction=reduction,
+                avg_factor=avg_factor)
+
+        else:
+            raise NotImplementedError
+        return loss_cls
+
 ```
 
-
-[^1]: [Understanding Categorical Cross-Entropy Loss, Binary Cross-Entropy Loss, Softmax Loss, Logistic Loss, Focal Loss](https://gombru.github.io/2018/05/23/cross_entropy_loss/)
-
+[^1]: [mmdet.gaussian_focal_loss](https://mmdetection.readthedocs.io/en/v2.10.0/_modules/mmdet/models/losses/gaussian_focal_loss.html)
 ## Ranking Loss Functions
 
 [^2]: [Understanding Ranking Loss, Contrastive Loss, Margin Loss, Triplet Loss, Hinge Loss](https://gombru.github.io/2019/04/03/ranking_loss/)
