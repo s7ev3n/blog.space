@@ -1,5 +1,5 @@
 ---
-title: "Transformer learning notes"
+title: "Attention is all you need"
 description: "transfomer learning notes and code implementation"
 publishDate: "3 July 2024"
 updatedDate: "18 Jan 2025"

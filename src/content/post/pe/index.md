@@ -1,5 +1,5 @@
 ---
-title: "Position encoding and RoPE"
+title: "Sine and Rotatory Position Encoding"
 description: "position encoding notes"
 publishDate: "3 Aug 2024"
 updatedDate: "4 Jan 2025"

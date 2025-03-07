@@ -1,5 +1,5 @@
 ---
-title: "LLM Inference"
+title: "LLM inference"
 description: "llm inference notes"
 publishDate: "13 July 2024"
 updatedDate: "1 Dec 2024"
