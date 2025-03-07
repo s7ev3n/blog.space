@@ -1,5 +1,5 @@
 ---
-title: "3D Gaussian Splatting notes"
+title: "3D Gaussian Splatting"
 description: "3dgs learning notes"
 publishDate: "3 Dec 2024"
 updatedDate: "18 Jan 2025"
