@@ -1,0 +1,73 @@
+---
+import { getCollection } from 'astro:content';
+
+import PageLayout from "@/layouts/Base.astro";
+import type { GetStaticPaths, InferGetStaticPropsType } from "astro";
+
+export const getStaticPaths = (async () => {
+  const pdfs = await getCollection("pdf");
+  return pdfs.map(pdf => ({
+    params: { slug: pdf.id },
+    props: { pdf },
+  }));
+}) satisfies GetStaticPaths;
+
+export type Props = InferGetStaticPropsType<typeof getStaticPaths>;
+
+const { pdf } = Astro.props;
+const pdfPath = pdf.data.pdfPath.startsWith('/') ? pdf.data.pdfPath : `/${pdf.data.pdfPath}`;
+const meta = {
+  title: pdf.data.title,
+};
+---
+
+<PageLayout meta={meta}>
+  <div class="pdf-container">
+    <h1>{pdf.data.title}</h1>
+    
+    {pdf.data.tags && pdf.data.tags.length > 0 && (
+      <div class="tags">
+        {pdf.data.tags.map(tag => <span class="tag">{tag}</span>)}
+      </div>
+    )}
+    
+    <div class="pdf-viewer">
+      <!-- 使用原生的 object 标签来显示 PDF -->
+      <object
+        data={pdfPath}
+        type="application/pdf"
+        width="100%"
+        height="800px"
+      >
+      </object>
+    </div>
+  </div>
+</PageLayout>
+
+<style>
+  .pdf-container {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 1rem;
+  }
+  
+  .tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 1rem 0;
+  }
+  
+  .tag {
+    background-color: #f0f0f0;
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.875rem;
+  }
+  
+  .pdf-viewer {
+    margin-top: 1rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+  }
+</style>

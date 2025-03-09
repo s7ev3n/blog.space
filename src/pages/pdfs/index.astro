@@ -1,0 +1,79 @@
+---
+import { getCollection } from "astro:content";
+import PageLayout from "@/layouts/Base.astro";
+
+const allPdfs = await getCollection("pdf");
+
+const meta = {
+  title: "PDF Documents",
+  description: "Browse all PDF documents",
+};
+---
+
+<PageLayout meta={meta}>
+  <h1>PDF Documents</h1>
+  
+  <ul class="pdf-list">
+    {allPdfs.map((pdf) => (
+      <li class="pdf-item">
+        <a href={`/pdfs/${pdf.id}`} class="pdf-link">
+          <h2>{pdf.data.title}</h2>
+          {pdf.data.tags && pdf.data.tags.length > 0 && (
+            <div class="pdf-tags">
+              {pdf.data.tags.map((tag) => (
+                <span class="tag">{tag}</span>
+              ))}
+            </div>
+          )}
+        </a>
+      </li>
+    ))}
+  </ul>
+</PageLayout>
+
+<style>
+  .pdf-list {
+    list-style: none;
+    padding: 0;
+    margin: 2rem 0;
+  }
+  
+  .pdf-item {
+    margin-bottom: 1.5rem;
+    border: 1px solid #eaeaea;
+    border-radius: 8px;
+    overflow: hidden;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  
+  .pdf-item:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+  }
+  
+  .pdf-link {
+    display: block;
+    padding: 1.5rem;
+    color: inherit;
+    text-decoration: none;
+  }
+  
+  .pdf-link h2 {
+    margin-top: 0;
+    margin-bottom: 0.5rem;
+  }
+  
+  .pdf-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+  }
+  
+  .tag {
+    background-color: #f0f0f0;
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.875rem;
+  }
+</style>

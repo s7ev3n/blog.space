@@ -45,4 +45,13 @@ const note = defineCollection({
 	}),
 });
 
-export const collections = { post, note };
+// pdf collection
+const pdf = defineCollection({
+	loader: glob({ base: "./src/content/pdf", pattern: "**/*.{json,yaml}" }),
+	schema: baseSchema.extend({
+		tags: z.array(z.string()).default([]).transform(removeDupsAndLowerCase),
+		pdfPath: z.string(),
+	})
+});
+
+export const collections = { post, note, pdf };
