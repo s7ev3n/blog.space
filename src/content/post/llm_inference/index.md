@@ -3,7 +3,7 @@ title: "LLM inference"
 description: "llm inference notes"
 publishDate: "13 July 2024"
 updatedDate: "1 Dec 2024"
-tags: ["tech/llm/optimization"]
+tags: ["tech/llm"]
 draft: false
 ---
 
