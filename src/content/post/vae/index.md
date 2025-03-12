@@ -50,7 +50,43 @@ $$
 
 因此，变分推断通过引入一个参数化的近似分布$q_{\phi}(z)$，通过优化方法是其逼近真实的后验分布$p(z|x)$。
 ### Evidence Lower Bound (ELBO)
-以下的推导来自这篇博客[^1]。我们定义一个参数化的分布$Q_{\phi}(Z|X)$(例如是高斯分布)来近似$P(Z|X)$
+以下的推导来自这篇博客[^1]。我们定义一个参数化的分布$Q_{\phi}(Z|X)$(例如是高斯分布)来近似$P(Z|X)$。如何“近似”呢？当然是分布间的距离，这里采用了Reverse KL:
+$$
+KL(Q_\phi(Z|X)||P(Z|X)) = \sum_{z \in Z}{q_\phi(z|x)\log\frac{q_\phi(z|x)}{p(z|x)}}
+$$
+
+> 为什么说是反向Reverse呢？因为我们的目标是$P(Z|X)$，“正向”应该是从$P(Z|X)$看与$Q_\phi(Z|X)$的距离，即$KL(P(Z|X)||Q_\phi(Z|X))$。使用Reverse KL的原因在下节。
+
+对$KL$各种展开推导：
+$$
+\begin{align} 
+KL(Q||P) & = \sum_{z \in Z}{q_\phi(z|x)\log\frac{q_\phi(z|x)p(x)}{p(z,x)}} && \text{note: $p(x,z)=p(z|x)p(x)$} \\ 
+& = \sum_{z \in Z}{q_\phi(z|x)\big(\log{\frac{q_\phi(z|x)}{p(z,x)}} + \log{p(x)}\big)} \\ 
+& = \Big(\sum_{z}{q_\phi(z|x)\log{\frac{q_\phi(z|x)}{p(z,x)}}}\Big) + \Big(\sum_{z}{\log{p(x)}q_\phi(z|x)}\Big) \\ 
+& = \Big(\sum_{z}{q_\phi(z|x)\log{\frac{q_\phi(z|x)}{p(z,x)}}}\Big) + \Big(\log{p(x)}\sum_{z}{q_\phi(z|x)}\Big) && \text{note: $\sum_{z}{q(z)} = 1 $} \\ 
+& = \log{p(x)} + \Big(\sum_{z}{q_\phi(z|x)\log{\frac{q_\phi(z|x)}{p(z,x)}}}\Big)  \\ 
+\end{align}
+$$
+
+最小化$KL(Q||P)$就是最小化上面公式中的第二项，因为$\log{p(x)}$是固定的。然后我们把第二项展开(引入了[期望](#expecation)的定义)：
+$$
+\begin{align} 
+\sum_{z}{q_\phi(z|x)\log{\frac{q_\phi(z|x)}{p(z,x)}}} & = \mathbb{E}_{z \sim Q_\phi(Z|X)}\big[\log{\frac{q_\phi(z|x)}{p(z,x)}}\big]\\ 
+& = \mathbb{E}_Q\big[ \log{q_\phi(z|x)} - \log{p(x,z)} \big] \\ 
+& = \mathbb{E}_Q\big[ \log{q_\phi(z|x)} - (\log{p(x|z)} + \log(p(z))) \big] && \text{(via  $\log{p(x,z)=p(x|z)p(z)}$) }\\ 
+& = \mathbb{E}_Q\big[ \log{q_\phi(z|x)} - \log{p(x|z)} - \log(p(z))) \big] \\ 
+\end{align} \\
+$$
+最小化上面，就是最大化它的负数：
+$$
+\begin{align} 
+\text{maximize } \mathcal{L} & = -\sum_{z}{q_\phi(z|x)\log{\frac{q_\phi(z|x)}{p(z,x)}}} \\ 
+& = \mathbb{E}_Q\big[ -\log{q_\phi(z|x)} + \log{p(x|z)} + \log(p(z))) \big] \\ 
+& =  \mathbb{E}_Q\big[ \log{p(x|z)} + \log{\frac{p(z)}{ q_\phi(z|x)}} \big] && \\ 
+\end{align}
+$$
+
+$\mathcal{L}$就被成为变分下界(variational lower bound)。
 
 [^1]: [A Beginner's Guide to Variational Methods: Mean-Field Approximation](https://blog.evjang.com/2016/08/variational-bayes.html)
 
