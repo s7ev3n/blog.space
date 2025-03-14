@@ -21,6 +21,16 @@ p(Z|X)=\frac{p(X|Z)p(Z)}{p(X)}
 $$
 其中，$p(Z|X)$被称为后验概率(posterior probability)，$p(X|Z)$被称为似然函数(likelihood)，$p(Z)$被称为先验概率(prior probability)，$p(X)$是边缘似然概率。
 
+:::important
+$p(x)$被称为边缘似然概率，又称证据（Evidence）,它是指在给定观测数据的情况下，将模型中的某些参数进行边缘化（即对这些参数进行积分或求和）后得到的概率。**这个概率反映了在考虑了所有可能的参数值后，观测数据出现的可能性**。
+$$
+p(x)=\sum_{z}p(x|z)p(z)
+$$
+举个例子：
+- 想象你要计算“观测到一张图片$x$的概率”，但这张图片可能由无数种潜在原因$z$（如光照、物体形状等）生成。边缘似然$p(x)$是所有这些可能原因下生成$x$的概率之和
+- 它衡量了模型对数据$x$的整体解释能力，值越大，说明模型越能解释数据。
+:::
+
 ### Likelihood
 > 定义：The likelihood function (often simply called the likelihood) describes the joint probability of the observed data as a function of the parameters of the chosen statistical model. For each specific parameter value $\theta$  in the parameter space, the likelihood function $p(X | \theta)$ therefore assigns a probabilistic prediction to the observed data $X$.
 
@@ -36,23 +46,36 @@ $$
 $$
 其中，$q_{\phi}(z|x)$是取到某个$z$的概率值。另外，$\sum_{z} q_{\phi}(z|x)=1$
 
+:::tip
+KL散度在[Loss functions](https://www.s7ev3n.space/posts/loss/losses/#cross-entropy)简单做过定义，其是衡量两个概率分布$P$和$Q$之间差异的非对称度：
+$$
+D_{KL}(P||Q)=\sum_{i=0}^{n}p(x)\frac{p(x)}{q(x)}=-\sum_{i=0}^{n}p(x)\frac{q(x)}{p(x)}=\mathbb{E}_{x\sim P}[\log\frac{p(x)}{q(x)}]
+$$
+上面的定义引入的期望，可知KL散度本身就是关于分布$P$的特定形式的期望。
+:::
+
 ## Variational Inference
 **变分推断(Variational Inference)是指通过优化方法“近似”后验分布的过程**。
 
 我们都有后验概率的解析式$p(z|x)=\frac{p(x|z)p(z)}{p(x)}$，为什么不能直接计算后验概率而要近似呢？
 
 依次来看似然$p(x|z)$，先验$p(z)$和边缘似然$p(x)$：
-- 似然$p(x|z)$: 一般是假设似然函数的形式的，例如高斯分布
+- 似然$p(x|z)$: 一般是假设已知似然函数的形式，例如高斯分布
 - 先验$p(z)$: 一般也可以估计，例如统计大量数据中猫的图片的数量占比，即为先验
 - 边缘似然$p(x)$: 在高维的情况下，计算边缘似然$p(x)$是非常困难的
 
 边缘似然$p(x)$的定义是$p(x)=\sum_{z}p(x|z)p(z)$，如果$z$是高维度向量$z=(z_1,z_2,...,z_n)$，每个维度$z_i$有非常多可能的取值，要遍历所有的$z$，计算$p(x)$是非指数级时间复杂度。
 
-因此，变分推断通过引入一个参数化的近似分布$q_{\phi}(z)$，通过优化方法是其逼近真实的后验分布$p(z|x)$。
+因此，**变分推断通过引入一个参数化的近似分布$q_{\phi}(z)$，通过优化方法是其逼近真实的后验分布$p(z|x)$。**
 ### Evidence Lower Bound (ELBO)
-以下的推导来自这篇博客[^1]。我们定义一个参数化的分布$Q_{\phi}(Z|X)$(例如是高斯分布)来近似$P(Z|X)$。如何“近似”呢？当然是分布间的距离，这里采用了Reverse KL:
+以下的推导来自这篇博客[^1]。我们定义一个参数化的分布$Q_{\phi}(Z|X)$(假设是高斯分布)，通过调整参数$\phi$来近似$P(Z|X)$，例如下图：
+![q_p](./figs/q_p.png)
+
+如何“近似”呢？当然是分布间的距离，这里采用了Reverse KL，对离散的$z$（$P(Z|X)$中$X$是观测量固定值，$Z$是随机变量）进行求和:
 $$
-KL(Q_\phi(Z|X)||P(Z|X)) = \sum_{z \in Z}{q_\phi(z|x)\log\frac{q_\phi(z|x)}{p(z|x)}}
+\begin{align}
+KL(Q_\phi(Z|X)||P(Z|X)) = \sum_{z \in Z}{q_\phi(z|x)\log\frac{q_\phi(z|x)}{p(z|x)}}    
+\end{align}
 $$
 
 > 为什么说是反向Reverse呢？因为我们的目标是$P(Z|X)$，“正向”应该是从$P(Z|X)$看与$Q_\phi(Z|X)$的距离，即$KL(P(Z|X)||Q_\phi(Z|X))$。使用Reverse KL的原因在下节。
@@ -60,10 +83,10 @@ $$
 对$KL$各种展开推导：
 $$
 \begin{align} 
-KL(Q||P) & = \sum_{z \in Z}{q_\phi(z|x)\log\frac{q_\phi(z|x)p(x)}{p(z,x)}} && \text{note: $p(x,z)=p(z|x)p(x)$} \\ 
+KL(Q||P) & = \sum_{z \in Z}{q_\phi(z|x)\log\frac{q_\phi(z|x)p(x)}{p(z,x)}} && \text{via $p(x,z)=p(z|x)p(x)$} \\ 
 & = \sum_{z \in Z}{q_\phi(z|x)\big(\log{\frac{q_\phi(z|x)}{p(z,x)}} + \log{p(x)}\big)} \\ 
 & = \Big(\sum_{z}{q_\phi(z|x)\log{\frac{q_\phi(z|x)}{p(z,x)}}}\Big) + \Big(\sum_{z}{\log{p(x)}q_\phi(z|x)}\Big) \\ 
-& = \Big(\sum_{z}{q_\phi(z|x)\log{\frac{q_\phi(z|x)}{p(z,x)}}}\Big) + \Big(\log{p(x)}\sum_{z}{q_\phi(z|x)}\Big) && \text{note: $\sum_{z}{q(z)} = 1 $} \\ 
+& = \Big(\sum_{z}{q_\phi(z|x)\log{\frac{q_\phi(z|x)}{p(z,x)}}}\Big) + \Big(\log{p(x)}\sum_{z}{q_\phi(z|x)}\Big) && \text{via $\sum_{z}{q(z)} = 1 $} \\ 
 & = \log{p(x)} + \Big(\sum_{z}{q_\phi(z|x)\log{\frac{q_\phi(z|x)}{p(z,x)}}}\Big)  \\ 
 \end{align}
 $$
@@ -86,7 +109,29 @@ $$
 \end{align}
 $$
 
-$\mathcal{L}$就被成为变分下界(variational lower bound)。
+上面公式还可以进一步推导变得更直观：
+$$
+\begin{align*} 
+\mathcal{L} & =  \mathbb{E}_Q\big[ \log{p(x|z)} + \log{\frac{p(z)}{ q_\phi(z|x)}} \big] \\ 
+& =   \mathbb{E}_Q\big[ \log{p(x|z)} \big] + \sum_{Q}{q(z|x)\log{\frac{p(z)}{ q_\phi(z|x)}}} && \text{Definition of expectation} \\ 
+& =  \mathbb{E}_Q\big[ \log{p(x|z)} \big] - KL(Q(Z|X)||P(Z)) && \text{Definition of KL divergence} && 
+\end{align*}
+$$
+
+在VAE中，从$z \sim Q(Z|X)$采样是所谓的Encoding过程，即将样本$X$压缩到隐变量$z$，从$x \sim Q(X|Z)$中采样是Decoding过程，即生成或恢复样本$x$。
+
+从上面公式可知，$\mathcal{L}$是两部分的加和，第一部份是decoding的似然函数的期望，即衡量变分分布可以从隐变量$Z$从解码回到$X$的好坏，第二部分是我们用于逼近真实分布的变分分布$Q(Z|X)$于隐变量的先验$P(Z)$的KL散度。如果我们假定$Q(Z|X)$的形式是条件概率高斯分布，那么先验$P(Z)$经常选取的是标准高斯分布，即均值为$\mathbb{0}$和方差是$\mathbb{1}$。
+
+带入初始的公式$(1)$，会得到：
+$$
+KL(Q||P)=\log{p(x)}-\mathcal{L}
+$$
+由于$KL(Q||P) \geq 0$，所以必然有$\log{p(x)} \geq \mathcal{L}$，$\mathcal{L}$就被称为变分下界(variational lower bound)，或Evidence Lower Bound (ELBO)，我们需要知道到底是针对什么的下界，它是$\log p(x)=\log \sum_{z}p(x|z)p(z)$，即模型生成观测$x$的能力。
+
+回到变分推断的优化目标，如果要最小化$KL(Q||P)$，即要最小化$-\mathcal{L}$，因此损失函数是:
+$$
+Loss=-\mathcal{L}= -\mathbb{E}_Q\big[ \log{p(x|z)} \big] + KL(Q(Z|X)||P(Z))
+$$
 
 [^1]: [A Beginner's Guide to Variational Methods: Mean-Field Approximation](https://blog.evjang.com/2016/08/variational-bayes.html)
 
