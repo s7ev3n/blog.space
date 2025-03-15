@@ -1,7 +1,7 @@
 ---
 title: "Variational Autoencoder"
 description: "vae"
-publishDate: "5 Feb 2025"
+publishDate: "15 Jan 2025"
 tags: ["tech/generative"]
 ---
 
@@ -49,9 +49,9 @@ $$
 :::tip
 KL散度在[Loss functions](https://www.s7ev3n.space/posts/loss/losses/#cross-entropy)简单做过定义，其是衡量两个概率分布$P$和$Q$之间差异的非对称度：
 $$
-D_{KL}(P||Q)=\sum_{i=0}^{n}p(x)\frac{p(x)}{q(x)}=-\sum_{i=0}^{n}p(x)\frac{q(x)}{p(x)}=\mathbb{E}_{x\sim P}[\log\frac{p(x)}{q(x)}]
+D_{KL}(P(X)||Q(X))=\sum_{i=0}^{n}p(x)\log \frac{p(x)}{q(x)}=-\sum_{i=0}^{n}p(x)\log \frac{q(x)}{p(x)}=\mathbb{E}_{x\sim P(X)}[\log\frac{p(x)}{q(x)}]
 $$
-上面的定义引入的期望，可知KL散度本身就是关于分布$P$的特定形式的期望。
+上面的定义引入的期望，**可知KL散度本身就是关于分布$P(X)$的特定形式的期望**。
 :::
 
 ## Variational Inference
@@ -136,7 +136,26 @@ $$
 [^1]: [A Beginner's Guide to Variational Methods: Mean-Field Approximation](https://blog.evjang.com/2016/08/variational-bayes.html)
 
 ### Forward KL vs. Reverse KL
+前面说过，在使用变分分布$Q(Z|X)$来逼近真实后验分布$P(Z|X)$时，我们使用的是Reverse KL，即$KL(Q||P)$。原因是什么呢？
 
+如果选择Forward KL:
+$$
+KL_{fwd}(P||Q)=\mathbb{E}_{z \sim P}[\log{\frac{p(z)}{q(z)}}]
+$$
+我们不必展开过多，上面公式中已经有困难存在：$z$需要从真实后验$P(Z|X)$中采样，这是不可能的，因为真实后验我们不知道。
+除了上面的困难，还有**优化不稳定的问题**。
+
+上面公式中$\frac{p(z)}{q(z)}$，如果真实后验$p(z)>0$，但是变分分布$q(z)$比如说接近$0$，会导致$\frac{p(z)}{q(z)}$的值变得无穷大，即$q(z)$需要支撑(support)$p(z)$区域，否则优化就爆炸了，这会导致变分分布$q(z)$在优化过程中避免$0$出现(zero-avoiding)，见下图：
+![forwad-KL](./figs/forward-KL.png)
+
+那Reverse KL是什么情况呢？
+$$
+KL_{rev}(Q||P)=\mathbb{E}_{z \sim Q}[\log{\frac{q(z)}{p(z)}}]
+$$
+当真实后验$p(z)$趋近于$0$，变分分布$q(z)$也会趋近于$0$，见下图：
+![reverse-KL](./figs/reverse-KL.png)
+
+总结起来，**最小化forward-KL会拉伸变分分布$p(z)$来覆盖掉整个真实后验$p(z)$，而最小化Reverse KL会使得变分分布$p(z)$更挤进真实后验$p(z)$**。
 
 ## Variational Autoencoder
 Lil'Log的文章[^2]比较了多种Autoencoder，同时也包含VAE。
