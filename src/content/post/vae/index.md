@@ -158,5 +158,28 @@ $$
 总结起来，**最小化forward-KL会拉伸变分分布$p(z)$来覆盖掉整个真实后验$p(z)$，而最小化Reverse KL会使得变分分布$p(z)$更挤进真实后验$p(z)$**。
 
 ## Variational Autoencoder
-Lil'Log的文章[^2]比较了多种Autoencoder，同时也包含VAE。
+铺垫了很多终于要来到变分自编码器VAE了。Lil'Log的文章[^2]比较了多种Autoencoder，同时也包含VAE，建议去认真阅读一下。
+
+简单介绍一下自编码器，一般由两部分构成：编码器和解码器。解码器负责将高维数据压缩到一个隐变量(latent code)，相当于对高维数据的降维；解码器负责从隐变量恢复出输入的高维数据数据，注意是恢复，而不是生成。比较有影响力的工作，Masked AutoEncoder (MAE)，就是利用遮挡住一部分的数据，自监督的学习到图像的表征。
+
+但是，VAE和AE相比非常不一样，VAE从目的上讲，是为了“**生成**”。VAE的编码器将高维数据压缩到一个隐空间的分布中，从分布中采样，解码器负责从新的采样中恢复和输入数据不同的数据！
+
+使用数学语言描述VAE，输入数据为$x$，隐变量为$z$，隐变量$z$所在的分布使用$p_{\theta}(z)$来表示，参数是$\theta$，则：
+- $p_{\theta}(z)$称为先验
+- $p_{\theta}(z|x)$称为概率编码器，即把输入$x$压缩到隐空间的分布
+- $p_{\theta}(x|z)$称为概率解码器，即把隐空间的变量恢复到高维空间
+
+生成高维数据$x^{(i)}$是从$p_{\theta}(x^{(i)}|z)$，而我们的目标是最大化生成样本的模型的参数，即：
+$$
+\theta^{*} = \arg\max_\theta \prod_{i=1}^n p_\theta(\mathbf{x}^{(i)}|z)
+$$
+
+
+$$
+p_\theta(\mathbf{x}^{(i)}) = \int p_\theta(\mathbf{x}^{(i)}\vert\mathbf{z}) p_\theta(\mathbf{z}) d\mathbf{z}
+$$
+
+
+### Reparameterization Trick
+
 [^2]: [From Autoencoder to Beta-VAE](https://lilianweng.github.io/posts/2018-08-12-vae/)
