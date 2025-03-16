@@ -158,28 +158,60 @@ $$
 总结起来，**最小化forward-KL会拉伸变分分布$p(z)$来覆盖掉整个真实后验$p(z)$，而最小化Reverse KL会使得变分分布$p(z)$更挤进真实后验$p(z)$**。
 
 ## Variational Autoencoder
-铺垫了很多终于要来到变分自编码器VAE了。Lil'Log的文章[^2]比较了多种Autoencoder，同时也包含VAE，建议去认真阅读一下。
+铺垫了很多终于要来到变分自编码器VAE了。Lil'Log的文章[^2]比较了多种Autoencoder，同时也包含VAE，建议去认真阅读。
 
-简单介绍一下自编码器，一般由两部分构成：编码器和解码器。解码器负责将高维数据压缩到一个隐变量(latent code)，相当于对高维数据的降维；解码器负责从隐变量恢复出输入的高维数据数据，注意是恢复，而不是生成。比较有影响力的工作，Masked AutoEncoder (MAE)，就是利用遮挡住一部分的数据，自监督的学习到图像的表征。
+自编码器一般由两部分构成：编码器和解码器。解码器负责将高维数据压缩到一个隐变量(latent code)，相当于对高维数据的降维；解码器负责从隐变量恢复出输入的高维数据数据，注意是恢复，而不是生成。但是，VAE和AE相比非常不一样，VAE是一个“**生成式**”模型。VAE的编码器将高维数据压缩到一个**隐空间的分布**中，从分布中采样，解码器负责从新的采样中恢复(生成)和输入数据不同的数据！
+我们设输入数据为$X$，隐变量为$Z$，隐变量$Z$所在的分布使用$P(Z)$来表示，**生成模型的核心任务是学习数据的分布$P(X)$**，从而能够生成与真实数据分布一致的新样本$X_{new}$，但是直接建模高维数据$X$的分布十分困难，原因在于高维数据计算复杂，以及数据$X$中隐含的潜在变量（如物体的形状、光照条件）未被显式建模。解决方案是引入隐变量$Z$，通过隐变量控制生成：$P(X|Z)P(Z)$，具体来说：
 
-但是，VAE和AE相比非常不一样，VAE从目的上讲，是为了“**生成**”。VAE的编码器将高维数据压缩到一个隐空间的分布中，从分布中采样，解码器负责从新的采样中恢复和输入数据不同的数据！
+- 概率编码器$P(Z|X)$把输入$X=x$压缩到隐空间的分布$P(Z)$
+- 从隐空间$P_{\theta}(Z)$中采样新隐变量$z_{new}$
+- 概率解码器$P(X|Z)$基于隐变量$z_{new}$生成$x_{new}$
 
-使用数学语言描述VAE，输入数据为$x$，隐变量为$z$，隐变量$z$所在的分布使用$p_{\theta}(z)$来表示，参数是$\theta$，则：
-- $p_{\theta}(z)$称为先验
-- $p_{\theta}(z|x)$称为概率编码器，即把输入$x$压缩到隐空间的分布
-- $p_{\theta}(x|z)$称为概率解码器，即把隐空间的变量恢复到高维空间
-
-生成高维数据$x^{(i)}$是从$p_{\theta}(x^{(i)}|z)$，而我们的目标是最大化生成样本的模型的参数，即：
+即：
 $$
-\theta^{*} = \arg\max_\theta \prod_{i=1}^n p_\theta(\mathbf{x}^{(i)}|z)
+x_{new} \sim P(X) = \sum p(x|z)p(z)dz
 $$
 
+> 为什么是对$z$的求和(积分)？通过对$Z$求和(积分)，模型生成的$X$不再依赖于某个特定的$Z$，而是覆盖所有可能的$Z$值，从而匹配真实数据分布$P(X)$。
 
+上面公式，和前面的[边缘似然](#bayesian)的定义是一致的，并且在[变分方法](#variational-inference)的推导中，我们知道$\log{p(X)}\geq ELBO$，即我们需要最小化$-ELBO$:
 $$
-p_\theta(\mathbf{x}^{(i)}) = \int p_\theta(\mathbf{x}^{(i)}\vert\mathbf{z}) p_\theta(\mathbf{z}) d\mathbf{z}
+\mathcal{L}_{VAE}=
+ - \mathbb{E}_{\mathbf{z} \sim q_\phi(\mathbf{z}\vert\mathbf{x})} \log p_\theta(\mathbf{x}\vert\mathbf{z}) + D_\text{KL}( q_\phi(\mathbf{z}\vert\mathbf{x}) \| p_\theta(\mathbf{z}) ) 
 $$
-
-
-### Reparameterization Trick
 
 [^2]: [From Autoencoder to Beta-VAE](https://lilianweng.github.io/posts/2018-08-12-vae/)
+
+### Reparameterization Trick
+上面的损失函数放到深度学习的语境下存在一个问题，采样过程$\mathbf{z} \sim q_\phi(\mathbf{z}\vert\mathbf{x})$是一个随机过程，不可微，没有办法使用反向传播来更新梯度。于是，引入一个技巧，称为重参数化技巧。
+:::important
+重参数化技巧通过将随机性转移到基础噪声变量，使梯度能够通过确定性路径传播，解决了深度生成模型中随机采样导致的梯度不可导问题。将采样过程改写为以下形式：
+$$
+z = g_{\theta}(\epsilon), \epsilon \sim p(\epsilon)
+$$
+其中，
+- $\epsilon$是一个与模型参数无关的基础随机变量（如标准高斯噪声$\epsilon \sim \mathcal{N}(0,1)$）
+- $g_{\theta}(\epsilon)$是一个**确定性**函数，将$\epsilon$转变为$z$，函数$g$的参数为$\theta$
+:::
+
+VAE中假设$q_\phi(\mathbf{z}\vert\mathbf{x})$的形式是多元高斯分布
+$$
+\mathbf{z} \sim q_\phi(\mathbf{z}\vert\mathbf{x}) = \mathcal{N}(\boldsymbol{\mu}, \boldsymbol{\sigma}\boldsymbol{I})
+$$
+
+经过$g_{\theta}(\epsilon)$重参数化之后：
+$$
+\mathbf{z} = \boldsymbol{\mu} + \boldsymbol{\sigma} \odot \boldsymbol{\epsilon} \text{, where } \boldsymbol{\epsilon} \sim \mathcal{N}(0, \boldsymbol{I})  \scriptstyle{\text{; Reparameterization trick.}}
+$$
+其中$\odot$意味着元素相乘。
+
+如此，梯度变得可计算：
+$$
+\begin{align*}
+    \frac{\partial \mathcal{L}}{\partial \mu} &= \mathbb{E}_{\epsilon \sim \mathcal{N}(0,1)} \left[ \frac{\partial \mathcal{L}}{\partial z} \cdot \frac{\partial z}{\partial \mu} \right] = \mathbb{E}_{\epsilon} \left[ \frac{\partial \mathcal{L}}{\partial z} \cdot 1 \right] \\
+    \frac{\partial \mathcal{L}}{\partial \sigma} &= \mathbb{E}_{\epsilon \sim \mathcal{N}(0,1)} \left[ \frac{\partial \mathcal{L}}{\partial z} \cdot \frac{\partial z}{\partial \sigma} \right] = \mathbb{E}_{\epsilon} \left[ \frac{\partial \mathcal{L}}{\partial z} \cdot \epsilon \right]
+\end{align*}
+$$
+
+最后，使用博客[^2]中的图更直观的表示VAE：
+![vae](./figs/vae-gaussian.png)
