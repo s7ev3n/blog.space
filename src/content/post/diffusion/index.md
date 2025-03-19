@@ -23,7 +23,30 @@ Diffusion model早在2015年论文[^1]中提出，但是在2020年[Denoising Dif
 
 这两个过程的存在，实际上是为了应对生成模型中的一个核心难题：**如何在复杂的分布中采样**。生成模型，比如GAN，直接从随机噪声中生成数据，但这种方式容易导致模式崩塌（model collapse），即生成的样本多样性不足。而Denoising Diffusion Model通过正向和反向过程，把生成任务分解成多个小步骤，每一步都只学习一个简单的任务——添加或去除噪声。这种分步学习的方式，不仅提高了模型的稳定性，还显著提升了生成样本的质量和多样性。
 
-### Forward diffusion process
+### Forward diffusion process $q(\mathbf{x_t}|\mathbf{x_{t-1}})$
+我们令$\mathbf{x_0}$为原始图像，从真实的数据分布$\mathbb{q(x)}$从采样，是正向过程初始时的数据，从$0$到$T$步，逐渐加入噪音，经过足够多的步数，最终$\mathbf{x_T}$为从标准高斯分布中随机采样出来的(噪音)数据，即$\mathbf{x_T} \sim \mathcal{N}(\mathbf{0},\mathbf{I})$。正向过程可以使用下图（来自[^1]）表示:
+![forward_diff](./figs/forward_diffusion.png)
 
-### Reverse diffusion process
+每一步的推导关系是：
+$$
+\mathbf{x_t} = \sqrt{1-\beta_t}\mathbf{x_{t-1}} + \sqrt{\beta_t}\epsilon_{t-1}
+$$
+其中，$\epsilon_t \sim \mathcal{N}(\mathbf{0},\mathbf{I})$
+
+这个推导关系有很多的疑问：
+- 1.每一步加的噪音为什么不是直接从加和$\epsilon_t$，而是要对$\epsilon_t$使用$\sqrt{\beta_t}$进行缩放？
+
+$\beta_t$是预先定义的标量值，用来控制所加噪声的强度，它不是一个固定值，而是随着步数而变换，如此可以逐步加入噪音。如果直接加入$\epsilon_t$，每一步的噪声都是固定的，这会导致在反向去噪过程中(reverse diffusion process)，难以逐步恢复。
+
+- 2.为什么经过$\mathbf{T}$步骤的逐渐加噪音，$\mathbf{x_T}$最后会服从标准正太分布？
+
+
+:::note
+中心极限定理（central limit theorem/CLT）是概率论核心定理之一。假设有**独立同分布(i.i.d)**的随机变量$\mathbf{X_1, X_2,...,X_n}$，总体均值为$\mu$，方差为$\sigma^2$，当样本量$n$足够大的时候，样本均值$\overline{\mathbf{X}}=\frac{1}{n}\sum_{i=1}^{n}\mathbf{X_i}$趋近于标准正态分布$\mathcal{N}(\mathbf{0},\mathbf{I})$
+:::
+
+
+[^1]: [SIGGRAPH 2023 Course on Diffusion Models](https://dl.acm.org/doi/10.1145/3587423.3595503)
+
+### Reverse diffusion process $p(\mathbf{x_{t-1}}|\mathbf{x_t})$
 
