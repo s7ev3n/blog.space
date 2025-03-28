@@ -5,15 +5,16 @@ publishDate: "25 Jan 2025"
 tags: ["tech/generative"]
 ---
 
-> Diffusion Model（扩散模型）是目前图像、视频生成模型的基础，其核心思想是通过逐步添加噪声（正向扩散）和逐步去噪（反向生成）的过程，将数据从原始分布逐步转换为噪声分布，再通过学习逆过程生成高质量样本。本文是学习扩散模型的笔记。
+> Diffusion Model（扩散模型）是目前图像、视频生成模型的基础，其核心思想是通过逐步添加噪声（正向扩散）和逐步去噪（反向生成）的过程，将数据从原始分布逐步转换为噪声分布，再通过学习逆过程逐步去除噪音生成高质量样本。
 
 ## Denoising Diffusion Model
-Diffusion model早在2015年论文[^1]中提出，但是在2020年[Denoising Diffusion Probabilistic Model](https://arxiv.org/abs/2006.11239)工作中得到广泛认可。扩散模型被人熟知包含正向加噪过程和反向去噪过程。
+Diffusion model早在2015年论文[^1]中提出，但是在2020年[Denoising Diffusion Probabilistic Model](https://arxiv.org/abs/2006.11239)工作中得到显著改进，可以生成高质量图像。扩散模型被人熟知包含正向加噪过程和反向去噪过程。
 
 [^1]: [Deep Unsupervised Learning using Nonequilibrium Thermodynamics](https://arxiv.org/abs/1503.03585)
 
 
-### Why denoising
+### Denoising
+> 所谓“噪音”指的是标准正态分布。
 
 **正向过程：把复杂数据“拆解”成简单的噪声**
 正向过程的核心任务是逐步向数据中添加噪声，直到它变成完全随机的高斯噪声。这一步看似简单，但它的意义非常深刻。真实世界的数据分布往往是高度复杂的，比如图像、语音、文本，它们的特征空间可能有无数个维度，分布形态也极其不规则。直接建模这样的分布几乎是不可能。但通过正向过程，我们可以把这种复杂性“分解”掉。每一步只添加一点点噪声，逐步掩盖数据的细节，最终让数据完全服从高斯分布，这样一来，原本复杂的分布就被转化成一个简单的高斯分布，学习任务的难度大大降低。这一步的设计，实际上是为了让模型有一个明确的起点和终点，避免在复杂分布中迷失方向。
@@ -29,50 +30,52 @@ Diffusion model早在2015年论文[^1]中提出，但是在2020年[Denoising Dif
 
 加噪音的过程定义为Markov过程，即当前步$t$只与上一步$t-1$有关：
 $$
-q(\mathbf{x}_t \vert \mathbf{x}_{t-1}) = \mathcal{N}(\mathbf{x}_t; \sqrt{1 - \beta_t} \mathbf{x}_{t-1}, \beta_t\mathbf{I}) 
+\begin{equation}
+   q(\mathbf{x}_t \vert \mathbf{x}_{t-1}) = \mathcal{N}(\mathbf{x}_t; \sqrt{1 - \beta_t} \mathbf{x}_{t-1}, \beta_t\mathbf{I}) 
+\end{equation}
 $$
 整个前向扩散过程是所有步的联合概率：
 $$
-q(\mathbf{x}_{1:T} \vert \mathbf{x}_0) = \prod^T_{t=1} q(\mathbf{x}_t \vert \mathbf{x}_{t-1})
+\begin{equation}
+    q(\mathbf{x}_{1:T} \vert \mathbf{x}_0) = \prod^T_{t=1} q(\mathbf{x}_t \vert \mathbf{x}_{t-1})
+\end{equation}
 $$
 
 前向过程的定义可以得到一个非常优良的性质：可以在任意步$t$使用一个解析解进行采样。我们推导一下，第$t$步和前一步$t-1$的推导关系是：
 $$
-\begin{align*}
-    \mathbf{x_t} = \sqrt{1-\beta_t}\mathbf{x_{t-1}} + \sqrt{\beta_t}\epsilon_{t}
-\end{align*}
+\begin{equation}
+    \mathbf{x_t} = \sqrt{1-\beta_t}\mathbf{x_{t-1}} + \sqrt{\beta_t}\epsilon_{t}, \quad \epsilon_t \sim \mathcal{N}(\mathbf{0},\mathbf{I})
+\end{equation}
 $$
-其中，$\epsilon_t \sim \mathcal{N}(\mathbf{0},\mathbf{I})$
-
-
 
 我们试着展开这个递推公式，展开之前，我们先对变量做一些变换，有助于公式的推导，令$\alpha_t=1-\beta_t$：
 $$
-\begin{align*}
+\begin{align}
     \mathbf{x_t} &= \sqrt{\alpha_t}\mathbf{x_{t-1}} + \sqrt{1-\alpha_t}\epsilon_{t} \\
     &=\sqrt{\alpha_t}( \sqrt{\alpha_{t-1}}\mathbf{x_{t-2}} + \sqrt{1-\alpha_{t-1}}\epsilon_{t-1}) + \sqrt{1-\alpha_t}\epsilon_{t} \\
     &=\sqrt{\alpha_t\alpha_{t-1}}\mathbf{x_{t-2}} + \underbrace{ \sqrt{\alpha_t(1-\alpha_{t-1})}\epsilon_{t-1} + \sqrt{1-\alpha_t}\epsilon_{t}}_{\text{i.i.d gaussian noise}}
-\end{align*}
+\end{align}
 $$
 如果继续展开更多步，噪声项会变得越来越多，因为都是独立同分布的噪声项，由于正态分布是可以叠加的，可以对噪声项进行简化。注意到$\sqrt{\alpha_t(1-\alpha_{t-1})}\epsilon_{t-1} \sim \mathcal{N}(0,\alpha_t(1-\alpha_{t-1})\mathbf{I})$，因为$\epsilon_{t-1} \sim \mathcal{N}(\mathbf{0},\mathbf{I})$，对它进行相乘，不改变均值，但是会改变方差。同理，$\sqrt{1-\alpha_t}\epsilon_{t} \sim \mathcal{N}(0,(1-\alpha_{t})\mathbf{I})$，两个噪声项之和也服从高斯分布，新的分布是$\mathcal{N}(0,\alpha_t(1-\alpha_{t-1})+(1-\alpha_{t})\mathbf{I})=\mathcal{N}(\mathbf{0}, (1-\alpha_t\alpha_{t-1})\mathbf{I})$，两个噪音项的和相当于从新的分布采样，令$\bar{\epsilon}_{t-2}$是合并后从$\mathcal{N}(\mathbf{0},\mathbf{I})$的采样值，再经过缩放：
 $$
-\sqrt{\alpha_t(1-\alpha_{t-1})}\epsilon_{t-1} + \sqrt{1-\alpha_t}\epsilon_{t}=\sqrt{1-\alpha_t\alpha_{t-1}}\bar{\epsilon}_{t-2}
+\begin{equation}
+   \sqrt{\alpha_t(1-\alpha_{t-1})}\epsilon_{t-1} + \sqrt{1-\alpha_t}\epsilon_{t}=\sqrt{1-\alpha_t\alpha_{t-1}}\bar{\epsilon}_{t-2} 
+\end{equation}
 $$
 则，
 $$
-\begin{align*}
+\begin{align}
     \mathbf{x_t} &= \sqrt{\alpha_t}\mathbf{x_{t-1}} + \sqrt{1-\alpha_t}\epsilon_{t} \\
     &= \sqrt{\alpha_t\alpha_{t-1}}\mathbf{x_{t-2}} + \sqrt{1-\alpha_t\alpha_{t-1}}\bar{\epsilon}_{t-2}
-\end{align*}
+\end{align}
 $$
 我们可以一路推导到$\mathbf{x_0}$：
 $$
-\begin{aligned}
+\begin{align}
 \mathbf{x}_t 
-&= \sqrt{\bar{\alpha}_t}\mathbf{x}_0 + \sqrt{1 - \bar{\alpha}_t}\boldsymbol{\epsilon}
-\end{aligned}
+&= \sqrt{\bar{\alpha}_t}\mathbf{x}_0 + \sqrt{1 - \bar{\alpha}_t}\boldsymbol{\epsilon}, \quad \bar{\alpha}_t=\prod^t_{s=1}\alpha_s
+\end{align}
 $$
-其中，$\bar{\alpha}_t=\prod^t_{s=1}\alpha_s$。
 
 这个递推公式等价于从下面的分布进行采样：
 $$
@@ -84,17 +87,15 @@ q(\mathbf{x}_t \vert \mathbf{x}_0) = \mathcal{N}(\mathbf{x}_t; \sqrt{1-\bar{\bet
 $$
 这样，在任意步$t$都可以进行采样。
 
-最后，还有一些的问题：
+:::tip
+如果你也有这些的问题：
 - 1.每一步加的噪音为什么不是直接从加和$\epsilon_t$，而是要对$\epsilon_t$使用$\sqrt{\beta_t}$进行缩放？
 
 $\beta_t$是预先定义的标量值，用来控制所加噪声的强度，它不是一个固定值，而是随着步数而变化，如此可以逐步加入噪音。如果直接加入$\epsilon_t$，每一步的噪声都是固定的，这会导致在反向去噪过程中(reverse diffusion process)，难以逐步恢复。
 
 - 2.为什么经过$\mathbf{T}$步骤的逐渐加噪音，$\mathbf{x_T}$最后会服从标准正态分布？
 
-使用中心极限定理可以比较简单的说明。
-
-:::note
-中心极限定理（central limit theorem/CLT）是概率论核心定理之一。假设有<code>独立同分布(i.i.d)</code>的随机变量$\mathbf{X_1, X_2,...,X_n}$，总体均值为$\mu$，方差为$\sigma^2$，当样本量$n$足够大的时候，样本均值$\bar{\mathbf{X}}=\frac{1}{n}\sum_{i=1}^{n}\mathbf{X_i}$趋近于标准正态分布
+使用中心极限定理可以比较简单的说明。中心极限定理（central limit theorem/CLT）是概率论核心定理之一。假设有<code>独立同分布(i.i.d)</code>的随机变量$\mathbf{X_1, X_2,...,X_n}$，总体均值为$\mu$，方差为$\sigma^2$，当样本量$n$足够大的时候，样本均值$\bar{\mathbf{X}}=\frac{1}{n}\sum_{i=1}^{n}\mathbf{X_i}$趋近于标准正态分布
 $$
 \frac{\bar{\mathbf{X}}-\mu}{\sigma / \sqrt{n}}
 \sim
@@ -105,4 +106,61 @@ $$
 [^2]: [SIGGRAPH 2023 Course on Diffusion Models](https://dl.acm.org/doi/10.1145/3587423.3595503)
 
 ### Reverse diffusion process
+> 注意这一节中的大量公式可能会比较绕: 正向过程$q(\mathbf{x}_{1:T} \vert \mathbf{x}_0) = \prod^T_{t=1} q(\mathbf{x}_t \vert \mathbf{x}_{t-1})$，真实的逆向过程$q(\mathbf{x}_{t-1} \vert \mathbf{x}_t)$，近似逆向过程的分布$\mathbf{p}(\mathbf{x}_T)\prod_{t=1}^{T}\mathbf{p}_{\theta}(\mathbf{x}_{t-1}|\mathbf{x}_t)$
+
+
+逆向扩散过程(即生成过程)逐步从噪音(标准正态分布)$\mathbf{x}_T$中去噪，最终得到图像$\mathbf{x}_{0}$，这个过程可以用下式的联合概率(见下面note部分)描述：
+$$
+\begin{equation}
+    \mathbf{p}_{\theta}(\mathbf{x}_{0:T})=\mathbf{p}(\mathbf{x}_T)\prod_{t=1}^{T}\mathbf{p}_{\theta}(\mathbf{x}_{t-1}|\mathbf{x}_t)
+\end{equation}
+$$
+其中，$\mathbf{p}_{\theta}$表示参数化的逆向过程，也是DDPM模型学习的分布。
+
+:::note
+多变量联合概率拆分：$P(A,B,C)=P(A|B,C)P(B|C)P(C)$
+
+由于逆向扩散过程也是马尔科夫过程，所以$p(x_1, x_2, \dots, x_T)=p(x_1|x_2, \dots, x_T)\cdots=p(x_1|x_2)\cdots$，因为$x_1$只与$x_2$有关，和其余过程无关。
+:::
+
+### 优化目标
+
+与[VAE](https://www.s7ev3n.space/posts/vae/)试图一步生成图像不同，逆向过程逐步去除噪音，可以更好的近似真实的数据分布$\mathbf{p(x_0)}$，生成质量非常高的图片。也可以把逆向扩散过程理解成[马尔科夫分层自编码器(Markovian Hierarchical Variational Autoencoder,MHVAE)](https://www.zhangzhenhu.com/aigc/)，此时逆向过程中的$\mathbf{x_1, x_2, \dots, x_{T-1}}$都是看成是隐变量。
+
+生成模型的最终目标都是学习到真实数据的分布，即$\mathbf{p(x_0)}$，由于无法对真实数据的分布进行建模，VAE中引入了隐变量$z$，并通过对联合概率的边缘化$\mathbf{p}(x) = \int_z \mathbf{p}(x,z) dz$建模分布，并推导出$\log p(x)$的变分下界(ELBO)，详细推导见[VAE](https://www.s7ev3n.space/posts/vae/)博文中。逆向扩散过程也一样，可以和VAE中ELBO对比，公式是一致的:
+$$
+\begin{align}
+    \log\mathbf{p(x_0)} &= \log \int_{x_1} \int_{x_2} \cdots \int_{x_T} p(x_0, x_1, \dots, x_T) dx_1 dx_2 \cdots dx_T \\
+    &=\log\int_{x_{1:T}} p(x_T)\prod_{t=1}^{T}p_{\theta}(x_{t-1}|x_t) d_{x_{1:T}} \\
+    &=\log\int_{x_{1:T}}p_{\theta}(x_{0:T}) d_{x_{1:T}}\frac{q(x_{1:T}|x_0)}{q(x_{1:T}|x_0)} & \small{\text{引入正向扩散过程}} \\
+    &=\log\int_{x_{1:T}} q(x_{1:T}|x_0)\frac{p_{\theta}(x_{0:T})}{q(x_{1:T}|x_0)}d_{x_{1:T}} \\
+    &=\log\mathbb{E}_{q(x_{1:T}|x_0)}\Big[\frac{p_{\theta}(x_{0:T})}{q(x_{1:T}|x_0)}\Big] & \small{\text{期望的定义}}\\
+    &\geq \mathbb{E}_{q(x_{1:T}|x_0)} \log\Big[\frac{p_{\theta}(x_{0:T})}{q(x_{1:T}|x_0)}\Big]:= L_{VLB} & \small{\text{via  Jensen's inequality}} 
+\end{align}
+$$
+
+:::note
+**Jensen's inequality:**
+
+Jensen 不等式是概率论和统计学中的一个重要不等式，描述了凸函数或凹函数与期望值之间的关系：
+
+- 如果函数是$f$是凸函数，那么对于任何随机变量$X$有：
+$$
+f(\mathbb{E}[X]) \leq \mathbb{E(f(X))}
+$$
+
+- 如果函数是$f$是凹函数，那么对于任何随机变量$X$有：
+$$
+f(\mathbb{E}[X]) \geq \mathbb{E(f(X))}
+$$
+由于$\log$函数是凹函数，所以上面公式适用这个情况。
+:::
+
+优化目标$L$是$-L_{VLB}$(Variational Lower Bound or Evidence lower bound, ELBO)，由于$L_{VLB}$是联合概率的形式可以进一步拆解:
+$$
+\begin{align}
+    L &= -L_{VLB} \\
+    &= 
+\end{align}
+$$
 
