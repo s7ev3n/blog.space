@@ -8,10 +8,10 @@ tags: ["tech/generative"]
 > Diffusion Model（扩散模型）是目前图像、视频生成模型的基础，其核心思想是通过逐步添加噪声（正向扩散）和逐步去噪（反向生成）的过程，将数据从原始分布逐步转换为噪声分布，再通过学习逆过程逐步去除噪音生成高质量样本。
 
 ## Denoising Diffusion Model
-Diffusion model早在2015年论文[^1]中提出，但是在2020年[Denoising Diffusion Probabilistic Model](https://arxiv.org/abs/2006.11239)工作中得到显著改进，可以生成高质量图像。扩散模型被人熟知包含正向加噪过程和反向去噪过程。
+Diffusion model早在2015年论文[^1]中提出，但是在2020年Denoising Diffusion Probabilistic Model, DDPM[^2]工作中得到显著改进，可以生成高质量图像。扩散模型被人熟知包含正向加噪过程和反向去噪过程。
 
 [^1]: [Deep Unsupervised Learning using Nonequilibrium Thermodynamics](https://arxiv.org/abs/1503.03585)
-
+[^2]: [Denoising Diffusion Probabilistic Model](https://arxiv.org/abs/2006.11239)
 
 ### Denoising
 > 所谓“噪音”指的是标准正态分布。
@@ -115,7 +115,7 @@ $$
     \mathbf{p}_{\theta}(\mathbf{x}_{0:T})=\mathbf{p}(\mathbf{x}_T)\prod_{t=1}^{T}\mathbf{p}_{\theta}(\mathbf{x}_{t-1}|\mathbf{x}_t)
 \end{equation}
 $$
-其中，$\mathbf{p}_{\theta}$表示参数化的逆向过程，也是DDPM模型学习的分布。
+其中，$\mathbf{p}_{\theta}$表示参数化的逆向过程，$\theta$是DDPM模型的权重参数。
 
 :::note
 多变量联合概率拆分：$P(A,B,C)=P(A|B,C)P(B|C)P(C)$
@@ -127,7 +127,7 @@ $$
 
 与[VAE](https://www.s7ev3n.space/posts/vae/)试图一步生成图像不同，逆向过程逐步去除噪音，可以更好的近似真实的数据分布$\mathbf{p(x_0)}$，生成质量非常高的图片。也可以把逆向扩散过程理解成[马尔科夫分层自编码器(Markovian Hierarchical Variational Autoencoder,MHVAE)](https://www.zhangzhenhu.com/aigc/)，此时逆向过程中的$\mathbf{x_1, x_2, \dots, x_{T-1}}$都是看成是隐变量。
 
-生成模型的最终目标都是学习到真实数据的分布，即$\mathbf{p(x_0)}$，由于无法对真实数据的分布进行建模，VAE中引入了隐变量$z$，并通过对联合概率的边缘化$\mathbf{p}(x) = \int_z \mathbf{p}(x,z) dz$建模分布，并推导出$\log p(x)$的变分下界(ELBO)，详细推导见[VAE](https://www.s7ev3n.space/posts/vae/)博文中。逆向扩散过程也一样，可以和VAE中ELBO对比，公式是一致的:
+**生成模型的最终目标都是学习到真实数据的分布，即$\mathbf{p(x_0)}$**，由于无法对真实数据的分布进行建模，VAE中引入了隐变量$z$，并通过对联合概率的边缘化$\mathbf{p}(x) = \int_z \mathbf{p}(x,z) dz$建模分布，并推导出$\log p(x)$的变分下界(ELBO)。逆向扩散过程也一样，只有存在更多的中间隐变量，公式VAE是一致的(详细推导见[VAE](https://www.s7ev3n.space/posts/vae/)博文中):
 $$
 \begin{align}
     \log\mathbf{p(x_0)} &= \log \int_{x_1} \int_{x_2} \cdots \int_{x_T} p(x_0, x_1, \dots, x_T) dx_1 dx_2 \cdots dx_T \\
@@ -156,11 +156,70 @@ $$
 由于$\log$函数是凹函数，所以上面公式适用这个情况。
 :::
 
-优化目标$L$是$-L_{VLB}$(Variational Lower Bound or Evidence lower bound, ELBO)，由于$L_{VLB}$是联合概率的形式可以进一步拆解:
+优化目标$L$是最大化($L_{VLB}$)，等价于最小化$-L_{VLB}$(Variational Lower Bound or Evidence lower bound, ELBO)，可以将公式$L_{VLB}$进一步拆解[^2]:
 $$
 \begin{align}
     L &= -L_{VLB} \\
-    &= 
+    &= \begin{aligned}
+      &-{\underbrace{\mathbb{E}_{q(x_{1} \vert x_0)}\left[\log p_{\theta}(x_0|x_1)\right]}_{L_{0}\text{: reconstruction term}}}\\
+      &+ {\underbrace{\mathbb{E}_{q(x_{T-1} \vert x_0)}\left[ D_{KL}(q(x_T \vert x_{T-1}) \parallel {p(x_T)}\right])}_{L_T\text{: prior matching term}}} \\
+      &+ {\sum_{t=1}^{T-1}\underbrace{\mathbb{E}_{q(x_{t-1}, x_{t+1} \vert x_0)}\left[ D_{KL} (q(x_{t} \vert x_{t-1})) \parallel {p_{\theta}(x_{t}|x_{t+1}}\right])}_{L_{T-1}\text{: consistency term}}}
+    \end{aligned} 
 \end{align}
 $$
 
+> 请注意的是：上面的公式和DDPM论文公式(5)和What are Diffusion Models?[^4]中的公式目前还不同，不要着急，请往后面看，后面的推导会让公式相同。
+
+[^4]: [What are Diffusion Models?](https://lilianweng.github.io/posts/2021-07-11-diffusion-models/)，不适合初学者
+
+<details>
+<summary>详细推导过程:</summary>
+
+$$
+\begin{aligned}
+    L &= a
+\end{aligned}
+$$
+</details>
+
+![diffusion_derivation_1](./figs/diffusion_first_derivation.png)
+
+注意到优化目标被拆分为三大类，$T+1$项：
+- DDPM论文中的$L_0$被称为重建项(reconstruction term)，它和VAE中ELBO的第一项是一样的，从隐变量$x_1$恢复真实数据$x_0$
+- DDPM论文中的$L_T$被称为先验匹配项(prior term)，由于$p(x_T)$和前向扩散$q(x_T \vert x_{T-1})$是已知的，所以这项属于常数项，在优化过程可以忽略
+- DDPM论文中的$L_{T-1}$被称为一致性项(consistency term)，是真正要优化的目标：真实的正向扩散$q(x_{t}\vert x_{t-1})$和模型估计的逆向扩散$p_{\theta}(x_t\vert x_{t+1})$的KL散度，即逆向扩散得到的$x_t$逼近正向扩散得到的$x_t$。但是，这里需要对$x_{t-1}, x_{t+1}$同时采样，如果使用MCMC采样求期望，同时对两个随机变量进行采样，会导致更大的方差，使得优化过程不稳定，因此直接优化$L_{T-1}$并不可行[^3]。
+
+[^3]: [DPM解读(图2.1.4)](https://www.zhangzhenhu.com/aigc/%E6%89%A9%E6%95%A3%E6%A6%82%E7%8E%87%E6%A8%A1%E5%9E%8B.html#diffusion-probabilistic-model)
+
+对$L_{T-1}$的改造：$q(x_t \vert x_{t-1}) = q(x_t \vert x_{t-1}, x_0)$，由于扩散过程是马尔科夫过程，所以条件概率中增加$x_0$后是等价的，但是会对整个$L$带来改进。将$q(x_t \vert x_{t-1}) = q(x_t \vert x_{t-1}, x_0)$通过贝叶斯公式展开：
+$$
+q(x_t \vert x_{t-1}, x_0) = \frac{q(x_{t-1} \vert x_t, x_0)q(x_t \vert x_0)}{q(x_{t-1} \vert x_0)}
+$$
+带入上式到前面的公式$(17)$，我们得到$L$的新的等价形式：
+$$
+\begin{align}
+    L &= -L_{VLB} \\
+    &= \begin{aligned}
+      &-{\underbrace{\mathbb{E}_{q(x_{1} \vert x_0)}\left[\log p_{\theta}(x_0|x_1)\right]}_{L_{0}\text{: reconstruction term}}}\\
+      &+ {\underbrace{\mathbb{E}_{q(x_{T-1} \vert x_0)}\left[ D_{KL}(q(x_T \vert x_{0}) \parallel {p(x_T)}\right])}_{L_T\text{: prior matching term}}} \\
+      &+ {\sum_{t=2}^{T}\underbrace{\mathbb{E}_{q(x_{t} \vert x_0)}\left[ D_{KL} (q(x_{t-1} \vert x_{t}, \red{x_0})) \parallel {p_{\theta}(x_{t-1} \vert x_{t}}\right])}_{L_{T-1}\text{: denoising matching term}}}
+    \end{aligned} 
+\end{align}
+$$
+
+<details>
+<summary>详细推导过程2:</summary>
+
+$$
+\begin{aligned}
+    L &= a
+\end{aligned}
+$$
+</details>
+
+![diffusion_derivation_2](./figs/diffusion_second_derivation.png)
+
+此时得到的优化目标和论文中一致，与上面的公式对比：
+- 重建项$L_0$没有任何变化
+- 先验匹配项$L_T$从$q(x_T \vert x_{T-1})$变成了$q(x_T \vert x_{0})$，由于正向扩散已知，所以这一项基本没有变化
+- $L_{T-1}$有不小的变化，称之为denosing matching term：从正向扩散$q(x_{t} \vert x_{t-1})$变为了逆向扩散$q(x_{t-1} \vert x_{t}, \red{x_0})$，并且条件概率中增加了$x_0$之后，采样只需要采样一个变量$x_t$即可
