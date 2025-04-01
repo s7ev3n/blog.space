@@ -109,13 +109,18 @@ $$
 > 注意这一节中的大量公式可能会比较绕: 正向过程$q(\mathbf{x}_{1:T} \vert \mathbf{x}_0) = \prod^T_{t=1} q(\mathbf{x}_t \vert \mathbf{x}_{t-1})$，真实的逆向过程$q(\mathbf{x}_{t-1} \vert \mathbf{x}_t)$，近似逆向过程的分布$\mathbf{p}(\mathbf{x}_T)\prod_{t=1}^{T}\mathbf{p}_{\theta}(\mathbf{x}_{t-1}|\mathbf{x}_t)$
 
 
-逆向扩散过程(即生成过程)逐步从噪音(标准正态分布)$\mathbf{x}_T$中去噪，最终得到图像$\mathbf{x}_{0}$，这个过程可以用下式的联合概率(见下面note部分)描述：
+逆向扩散过程，即**生成过程**，逐步从噪音(标准正态分布)$\mathbf{x}_T$中去噪，最终得到图像$\mathbf{x}_{0}$，这个过程同样使用马尔可夫过程来描述：
 $$
 \begin{equation}
     \mathbf{p}_{\theta}(\mathbf{x}_{0:T})=\mathbf{p}(\mathbf{x}_T)\prod_{t=1}^{T}\mathbf{p}_{\theta}(\mathbf{x}_{t-1}|\mathbf{x}_t)
 \end{equation}
 $$
 其中，$\mathbf{p}_{\theta}$表示参数化的逆向过程，$\theta$是DDPM模型的权重参数。
+
+你可能会疑惑，正向扩散是$q(\mathbf{x}_t \vert \mathbf{x}_{t-1})$，那么真实的逆向扩散应是$q(\mathbf{x}_{t-1} \vert \mathbf{x}_t)$。
+
+> 有一个很重要的细节：如果正向过程$q(\mathbf{x}_t \vert \mathbf{x}_{t-1}) = \mathcal{N}(\mathbf{x}_t; \sqrt{1 - \beta_t} \mathbf{x}_{t-1}, \beta_t\mathbf{I})$中的$\beta_t$足够小，那么逆向扩散$q(\mathbf{x}_{t-1} \vert \mathbf{x}_t)$也是高斯分布：$q(\mathbf{x}_{t-1} \vert \mathbf{x}_t) = \mathcal{N}(\mathbf{x}_{t-1}; \color{blue}{\tilde{\boldsymbol{\mu}}}(\mathbf{x}_t), \color{red}{\tilde{\beta}_t} \mathbf{I})$
+
 
 :::note
 多变量联合概率拆分：$P(A,B,C)=P(A|B,C)P(B|C)P(C)$
@@ -125,9 +130,12 @@ $$
 
 ### 优化目标
 
-与[VAE](https://www.s7ev3n.space/posts/vae/)试图一步生成图像不同，逆向过程逐步去除噪音，可以更好的近似真实的数据分布$\mathbf{p(x_0)}$，生成质量非常高的图片。也可以把逆向扩散过程理解成[马尔科夫分层自编码器(Markovian Hierarchical Variational Autoencoder,MHVAE)](https://www.zhangzhenhu.com/aigc/)，此时逆向过程中的$\mathbf{x_1, x_2, \dots, x_{T-1}}$都是看成是隐变量。
+Diffusion模型的损失函数公式是比较简单的，但是公式的推导是比较复杂的！
 
-**生成模型的最终目标都是学习到真实数据的分布，即$\mathbf{p(x_0)}$**，由于无法对真实数据的分布进行建模，VAE中引入了隐变量$z$，并通过对联合概率的边缘化$\mathbf{p}(x) = \int_z \mathbf{p}(x,z) dz$建模分布，并推导出$\log p(x)$的变分下界(ELBO)。逆向扩散过程也一样，只有存在更多的中间隐变量，公式VAE是一致的(详细推导见[VAE](https://www.s7ev3n.space/posts/vae/)博文中):
+#### 变分下界
+与[VAE](https://www.s7ev3n.space/posts/vae/)试图一步生成图像不同，逆向过程逐步去除噪音，可以更好的近似真实的数据分布$\mathbf{p(x_0)}$，生成质量非常高的图片。也可以把逆向扩散过程理解成[马尔科夫分层自编码器(Markovian Hierarchical Variational Autoencoder,MHVAE)](https://www.zhangzhenhu.com/aigc/)，此时逆向过程中的$\mathbf{x_1, x_2, \dots, x_{T-1}}$都可以看成是隐变量。
+
+**生成模型的最终目标都是学习到真实数据的分布，即$\mathbf{p(x_0)}$**，从而可以从其中采样生成非常真实的图像。由于无法对真实数据的分布进行建模，VAE中引入了隐变量$z$，并通过对联合概率的边缘化$\mathbf{p}(x) = \int_z \mathbf{p}(x,z) dz$建模分布，并推导出$\log p(x)$的变分下界(ELBO)。逆向扩散过程也一样，只有存在更多的中间隐变量，公式VAE是一致的(详细推导见[VAE](https://www.s7ev3n.space/posts/vae/)博文中):
 $$
 \begin{align}
     \log\mathbf{p(x_0)} &= \log \int_{x_1} \int_{x_2} \cdots \int_{x_T} p(x_0, x_1, \dots, x_T) dx_1 dx_2 \cdots dx_T \\
@@ -191,7 +199,14 @@ $$
 
 [^3]: [DPM解读(图2.1.4)](https://www.zhangzhenhu.com/aigc/%E6%89%A9%E6%95%A3%E6%A6%82%E7%8E%87%E6%A8%A1%E5%9E%8B.html#diffusion-probabilistic-model)
 
-对$L_{T-1}$的改造：$q(x_t \vert x_{t-1}) = q(x_t \vert x_{t-1}, x_0)$，由于扩散过程是马尔科夫过程，所以条件概率中增加$x_0$后是等价的，但是会对整个$L$带来改进。将$q(x_t \vert x_{t-1}) = q(x_t \vert x_{t-1}, x_0)$通过贝叶斯公式展开：
+#### 重写变分下界
+前向过程的后验分布(Foward process posteriors)$q(x_{t-1}\vert x_t)$
+
+对$L_{T-1}$的改造：$q(x_t \vert x_{t-1}) = q(x_t \vert x_{t-1}, x_0)$，由于扩散过程是马尔科夫过程，所以条件概率中增加$x_0$后是等价的。
+引入$x_0$不仅可以对$L$进行改写(Parameterization)，还可以使得不可计算的$q(x_t \vert x_{t-1})$变成可以计算的$q(x_t \vert x_{t-1}, x_0)$。
+
+**首先，对$L$的改写：** 
+将$q(x_t \vert x_{t-1}) = q(x_t \vert x_{t-1}, x_0)$通过贝叶斯公式展开：
 $$
 q(x_t \vert x_{t-1}, x_0) = \frac{q(x_{t-1} \vert x_t, x_0)q(x_t \vert x_0)}{q(x_{t-1} \vert x_0)}
 $$
@@ -222,4 +237,67 @@ $$
 此时得到的优化目标和论文中一致，与上面的公式对比：
 - 重建项$L_0$没有任何变化
 - 先验匹配项$L_T$从$q(x_T \vert x_{T-1})$变成了$q(x_T \vert x_{0})$，由于正向扩散已知，所以这一项基本没有变化
-- $L_{T-1}$有不小的变化，称之为denosing matching term：从正向扩散$q(x_{t} \vert x_{t-1})$变为了逆向扩散$q(x_{t-1} \vert x_{t}, \red{x_0})$，并且条件概率中增加了$x_0$之后，采样只需要采样一个变量$x_t$即可
+- $L_{T-1}$有不小的变化(改称为denosing matching term)：从正向扩散$q(x_{t} \vert x_{t-1})$变为了逆向扩散$q(x_{t-1} \vert x_{t}, \red{x_0})$，并且条件概率中增加了$x_0$之后，采样只需要采样一个变量$x_t$即可
+
+**第二，可计算的$q(x_t \vert x_{t-1}, x_0)$：**
+[逆向过程](#reverse-diffusion-process)中提到，$q(x_{t-1} \vert x_{t})$也是一个高斯分布，但是它的参数需要整个数据集计算来估计，基本是不可计算的(intractable)，但是增加了$x_0$之后，就可以计算了，定义
+$q(\mathbf{x}_{t-1} \vert \mathbf{x}_t, \mathbf{x}_0) = \mathcal{N}(\mathbf{x}_{t-1}; {\tilde{\boldsymbol{\mu}}}(\mathbf{x}_t, \mathbf{x}_0), {\tilde{\beta}_t} \mathbf{I})$，然后继续推导：
+
+$$
+\begin{align}
+q(\mathbf{x}_{t-1} \vert \mathbf{x}_t, \mathbf{x}_0) 
+&= q(\mathbf{x}_t \vert \mathbf{x}_{t-1}, \mathbf{x}_0) \frac{ q(\mathbf{x}_{t-1} \vert \mathbf{x}_0) }{ q(\mathbf{x}_t \vert \mathbf{x}_0) } & \small{\text{via Gaussian PDF}}\\
+&\propto \exp \Big(-\frac{1}{2} \big(\frac{(\mathbf{x}_t - \sqrt{\alpha_t} \mathbf{x}_{t-1})^2}{\beta_t} + \frac{(\mathbf{x}_{t-1} - \sqrt{\bar{\alpha}_{t-1}} \mathbf{x}_0)^2}{1-\bar{\alpha}_{t-1}} - \frac{(\mathbf{x}_t - \sqrt{\bar{\alpha}_t} \mathbf{x}_0)^2}{1-\bar{\alpha}_t} \big) \Big) \\
+&= \exp \Big(-\frac{1}{2} \big(\frac{\mathbf{x}_t^2 - 2\sqrt{\alpha_t} \mathbf{x}_t \color{blue}{\mathbf{x}_{t-1}} \color{black}{+ \alpha_t} \color{red}{\mathbf{x}_{t-1}^2} }{\beta_t} + \frac{ \color{red}{\mathbf{x}_{t-1}^2} \color{black}{- 2 \sqrt{\bar{\alpha}_{t-1}} \mathbf{x}_0} \color{blue}{\mathbf{x}_{t-1}} \color{black}{+ \bar{\alpha}_{t-1} \mathbf{x}_0^2}  }{1-\bar{\alpha}_{t-1}} - \frac{(\mathbf{x}_t - \sqrt{\bar{\alpha}_t} \mathbf{x}_0)^2}{1-\bar{\alpha}_t} \big) \Big) \\
+&= \exp\Big( -\frac{1}{2} \big( \color{red}{(\frac{\alpha_t}{\beta_t} + \frac{1}{1 - \bar{\alpha}_{t-1}})} \mathbf{x}_{t-1}^2 - \color{blue}{(\frac{2\sqrt{\alpha_t}}{\beta_t} \mathbf{x}_t + \frac{2\sqrt{\bar{\alpha}_{t-1}}}{1 - \bar{\alpha}_{t-1}} \mathbf{x}_0)} \mathbf{x}_{t-1} \color{black}{ + C(\mathbf{x}_t, \mathbf{x}_0) \big) \Big)}
+\end{align}
+$$
+其中，$C(\mathbf{x}_t, \mathbf{x}_0)$是不包含$\mathbf{x}_{t-1}$，所以相当于常数项。上面的公式看起来有些复杂，我们整理一下$q(\mathbf{x}_{t-1} \vert \mathbf{x}_t, \mathbf{x}_0) = \mathcal{N}(\mathbf{x}_{t-1}; {\tilde{\boldsymbol{\mu}}}(\mathbf{x}_t, \mathbf{x}_0), {\tilde{\beta}_t} \mathbf{I})$的均值和方差是：
+$$
+\begin{align}
+\tilde{\beta}_t 
+&= {\frac{1 - \bar{\alpha}_{t-1}}{1 - \bar{\alpha}_t} \cdot \beta_t} \\
+\tilde{\boldsymbol{\mu}}_t (\mathbf{x}_t, \mathbf{x}_0)
+&= \frac{\sqrt{\alpha_t}(1 - \bar{\alpha}_{t-1})}{1 - \bar{\alpha}_t} \mathbf{x}_t + \frac{\sqrt{\bar{\alpha}_{t-1}}\beta_t}{1 - \bar{\alpha}_t} \mathbf{x}_0\\
+\end{align}
+$$
+其中，$\alpha_t = 1 - \beta_t$以及$\bar{\alpha}_t = \prod_{i=1}^t \alpha_i$
+
+从正向扩散过程可知，$\mathbf{x}_0 = \frac{1}{\sqrt{\bar{\alpha}_t}}(\mathbf{x}_t - \sqrt{1 - \bar{\alpha}_t}\boldsymbol{\epsilon}_t)$，因此带入后，$\tilde{\boldsymbol{\mu}}_t (\mathbf{x}_t, \mathbf{x}_0)$还可以进一步简化为：
+$$
+\begin{align}
+\tilde{\boldsymbol{\mu}}_t (\mathbf{x}_t)
+&= {\frac{1}{\sqrt{\alpha_t}} \Big( \mathbf{x}_t - \frac{1 - \alpha_t}{\sqrt{1 - \bar{\alpha}_t}} \boldsymbol{\epsilon}_t \Big)}
+\end{align}
+$$
+
+#### Training Loss
+$$
+\begin{align}
+    L_{T-1}&=\sum_{t=2}^{T} \mathbb{E}_{q(x_{t} \vert x_0)}\left[ D_{KL} (q(x_{t-1} \vert x_{t}, x_0)) \parallel {p_{\theta}(x_{t-1} \vert x_{t}}\right]) \\
+    &=\sum_{t=2}^{T}
+\end{align}
+$$
+
+:::tip
+两个高斯分布的KL散度计算：
+$$
+D_{KL}({\mathcal{N}(x; {\mu}_x,{\Sigma}_x)} \parallel {\mathcal{N}(y; {\mu}_y,{\Sigma}_y)})
+=\frac{1}{2}\left[\log\frac{{\Sigma}_y}{{\Sigma}_x} - d + \text{tr}({\Sigma}_y^{-1}{\Sigma}_x)
++ ({\mu}_y-{\mu}_x)^T {\Sigma}_y^{-1} ({\mu}_y-{\mu}_x)\right]
+$$
+其中$d$是随机变量$x$的维度。
+:::
+
+$$
+\begin{aligned}
+& \quad \ D_{KL}({q(x_{t-1}|x_t, x_0)} \parallel {p_{{\theta}}(x_{t-1}|x_t)}) \\
+&= D_{KL}({\mathcal{N}(x_{t-1}; {\mu}_q,{\Sigma}_q(t))}\parallel{\mathcal{N}(x_{t-1}; {\mu}_{{\theta}},{\Sigma}_q(t))})\\
+&=\frac{1}{2}\left[\log\frac{{\Sigma}_q(t)}{{\Sigma}_q(t)} - d + \text{tr}({\Sigma}_q(t)^{-1}{\Sigma}_q(t))
++ ({\mu}_{{\theta}}-{\mu}_q)^T {\Sigma}_q(t)^{-1} ({\mu}_{{\theta}}-{\mu}_q)\right]\\
+&=\frac{1}{2}\left[\log1 - d + d + ({\mu}_{{\theta}}-{\mu}_q)^T {\Sigma}_q(t)^{-1} ({\mu}_{{\theta}}-{\mu}_q)\right]\\
+&=\frac{1}{2}\left[({\mu}_{{\theta}}-{\mu}_q)^T {\Sigma}_q(t)^{-1} ({\mu}_{{\theta}}-{\mu}_q)\right]\\
+&=\frac{1}{2}\left[({\mu}_{{\theta}}-{\mu}_q)^T \left(\sigma_q^2(t)\textbf{I}\right)^{-1} ({\mu}_{{\theta}}-{\mu}_q)\right]\\
+&=\frac{1}{2\sigma_q^2(t)}\left[\left\lVert{\mu}_{{\theta}}-{\mu}_q\right\rVert_2^2\right]
+\end{aligned}
+$$
