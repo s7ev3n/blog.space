@@ -16,32 +16,34 @@ Diffusion model早在2015年论文[^1]中提出，但是在2020年Denoising Diff
 ### Denoising
 > 所谓“噪音”指的是标准正态分布。
 
-**正向过程：把复杂数据“拆解”成简单的噪声**
+**正向扩散过程：把复杂数据“拆解”成简单的噪声**
 正向过程的核心任务是逐步向数据中添加噪声，直到它变成完全随机的高斯噪声。这一步看似简单，但它的意义非常深刻。真实世界的数据分布往往是高度复杂的，比如图像、语音、文本，它们的特征空间可能有无数个维度，分布形态也极其不规则。直接建模这样的分布几乎是不可能。但通过正向过程，我们可以把这种复杂性“分解”掉。每一步只添加一点点噪声，逐步掩盖数据的细节，最终让数据完全服从高斯分布，这样一来，原本复杂的分布就被转化成一个简单的高斯分布，学习任务的难度大大降低。这一步的设计，实际上是为了让模型有一个明确的起点和终点，避免在复杂分布中迷失方向。
 
-**反向过程：从噪声中“重建”数据的本质**
+**反向扩散过程：从噪声中“重建”数据的本质**
 反向过程要从完全随机的噪声中逐步还原出原始数据，这一步是整个Diffusion Model的核心，它通过训练神经网络，学习如何在每一步中去除噪声，最终将噪声还原为有意义的数据样本。反向过程并不是简单地“撤销”正向过程，而是通过学习噪声的逆操作，逐步还原数据的本质特征。每一步的去噪操作都相当于在问：“如果我现在有一个带噪声的样本，它最可能的前一步是什么样子？”通过这种方式，模型能够逐步剥离噪声，最终还原出原始数据。这种逐步逼近的方式，不仅让学习任务变得可控，还让模型能够捕捉到数据的深层结构。
 
 这两个过程的存在，实际上是为了应对生成模型中的一个核心难题：**如何在复杂的分布中采样**。生成模型，比如GAN，直接从随机噪声中生成数据，但这种方式容易导致模式崩塌（model collapse），即生成的样本多样性不足。而Denoising Diffusion Model通过正向和反向过程，把生成任务分解成多个小步骤，每一步都只学习一个简单的任务——添加或去除噪声。这种分步学习的方式，不仅提高了模型的稳定性，还显著提升了生成样本的质量和多样性。
 
-### Forward diffusion process
+### 正向扩散过程
 我们令$\mathbf{x_0}$为原始图像，从真实的数据分布$\mathbb{q(x)}$从采样，是正向过程初始时的数据，从$0$到$T$步，逐渐加入噪音，经过足够多的步数，最终$\mathbf{x_T}$为从标准高斯分布中随机采样出来的(噪音)数据，即$\mathbf{x_T} \sim \mathcal{N}(\mathbf{0},\mathbf{I})$。正向过程可以使用下图（来自[^2]）表示:
 ![forward_diff](./figs/forward_diffusion.png)
 
-加噪音的过程定义为Markov过程，即当前步$t$只与上一步$t-1$有关：
-$$
-\begin{equation}
-   q(\mathbf{x}_t \vert \mathbf{x}_{t-1}) = \mathcal{N}(\mathbf{x}_t; \sqrt{1 - \beta_t} \mathbf{x}_{t-1}, \beta_t\mathbf{I}) 
-\end{equation}
-$$
-整个前向扩散过程是所有步的联合概率：
+正向扩散过程定义为马尔科夫过程（即当前步$t$只与上一步$t-1$有关）：
 $$
 \begin{equation}
     q(\mathbf{x}_{1:T} \vert \mathbf{x}_0) = \prod^T_{t=1} q(\mathbf{x}_t \vert \mathbf{x}_{t-1})
 \end{equation}
 $$
+其中每一步加的噪音$q(\mathbf{x}_t \vert \mathbf{x}_{t-1})$服从正态分布：
+$$
+\begin{equation}
+   q(\mathbf{x}_t \vert \mathbf{x}_{t-1}) = \mathcal{N}(\mathbf{x}_t; \sqrt{1 - \beta_t} \mathbf{x}_{t-1}, \beta_t\mathbf{I}) 
+\end{equation}
+$$
 
-前向过程的定义可以得到一个非常优良的性质：可以在任意步$t$使用一个解析解进行采样。我们推导一下，第$t$步和前一步$t-1$的推导关系是：
+**你可能会奇怪$\beta_t$是什么？为什么这个正态分布要定义成这个形式？下面推导进行说明，这样定义有非常良好的性质。**
+
+前向过程的定义可以得到一个非常优良的性质：可以在任意步$t$可以使用一个解析解进行采样。我们推导一下，第$t$步和前一步$t-1$的推导关系是：
 $$
 \begin{equation}
     \mathbf{x_t} = \sqrt{1-\beta_t}\mathbf{x_{t-1}} + \sqrt{\beta_t}\epsilon_{t}, \quad \epsilon_t \sim \mathcal{N}(\mathbf{0},\mathbf{I})
@@ -85,7 +87,6 @@ $$
 $$
 q(\mathbf{x}_t \vert \mathbf{x}_0) = \mathcal{N}(\mathbf{x}_t; \sqrt{1-\bar{\beta}_t} \mathbf{x}_0, \bar{\beta}_t\mathbf{I})
 $$
-这样，在任意步$t$都可以进行采样。
 
 :::tip
 如果你也有这些的问题：
@@ -105,21 +106,26 @@ $$
 
 [^2]: [SIGGRAPH 2023 Course on Diffusion Models](https://dl.acm.org/doi/10.1145/3587423.3595503)
 
-### Reverse diffusion process
-> 注意这一节中的大量公式可能会比较绕: 正向过程$q(\mathbf{x}_{1:T} \vert \mathbf{x}_0) = \prod^T_{t=1} q(\mathbf{x}_t \vert \mathbf{x}_{t-1})$，真实的逆向过程$q(\mathbf{x}_{t-1} \vert \mathbf{x}_t)$，近似逆向过程的分布$\mathbf{p}(\mathbf{x}_T)\prod_{t=1}^{T}\mathbf{p}_{\theta}(\mathbf{x}_{t-1}|\mathbf{x}_t)$
+### 逆向扩散过程
+> 注意这一节中的大量公式可能会比较绕: 正向过程$q(\mathbf{x}_{1:T} \vert \mathbf{x}_0) = \prod^T_{t=1} q(\mathbf{x}_t \vert \mathbf{x}_{t-1})$，真实的逆向过程$q(\mathbf{x}_{t-1} \vert \mathbf{x}_t)$，近似逆向过程的分布$\mathbf{p}(\mathbf{x}_T)\prod_{t=1}^{T}\mathbf{p}_{\theta}(\mathbf{x}_{t-1} \vert \mathbf{x}_t)$
 
 
-逆向扩散过程，即**生成过程**，逐步从噪音(标准正态分布)$\mathbf{x}_T$中去噪，最终得到图像$\mathbf{x}_{0}$，这个过程同样使用马尔可夫过程来描述：
+逆向扩散过程，即**生成过程**，逐步从噪音(标准正态分布)$\mathbf{x}_T$中去噪，最终得到图像$\mathbf{x}_{0}$。上一节，得到了正向扩散$q(\mathbf{x}_t \vert \mathbf{x}_{t-1})$，并且它服从高斯分布$\mathcal{N}(\mathbf{x}_t; \sqrt{1 - \beta_t} \mathbf{x}_{t-1}, \beta_t\mathbf{I})$，那么真实的逆向扩散(论文中也称为前向过程的后验分布forward process posteriors)应是$q(\mathbf{x}_{t-1} \vert \mathbf{x}_t)$，这个分布根据DDPM论文中的叙述，当$\beta_t$足够小，同样是服从高斯分布。但是，真实的逆向扩散$q(\mathbf{x}_{t-1} \vert \mathbf{x}_t)$难以计算，于是使用模型来近似逆向扩散，设模型为$\mathbf{p}_{\theta}(\mathbf{x}_{t-1} \vert \mathbf{x}_t)$。
+
+逆向扩散过程同样使用马尔可夫过程来描述：
 $$
 \begin{equation}
     \mathbf{p}_{\theta}(\mathbf{x}_{0:T})=\mathbf{p}(\mathbf{x}_T)\prod_{t=1}^{T}\mathbf{p}_{\theta}(\mathbf{x}_{t-1}|\mathbf{x}_t)
 \end{equation}
 $$
-其中，$\mathbf{p}_{\theta}$表示参数化的逆向过程，$\theta$是DDPM模型的权重参数。
+其中，$\theta$是DDPM模型的权重参数。
 
-你可能会疑惑，正向扩散是$q(\mathbf{x}_t \vert \mathbf{x}_{t-1})$，那么真实的逆向扩散应是$q(\mathbf{x}_{t-1} \vert \mathbf{x}_t)$。
+由于真实的逆向扩散$q(\mathbf{x}_{t-1} \vert \mathbf{x}_t)$服从高斯分布，因此**模型近似的逆向扩散同样服从高斯分布**：
+$$
+p_\theta(\mathbf{x}_{t-1} \vert \mathbf{x}_t) \sim \mathcal{N}(\mathbf{x}_{t-1}; \boldsymbol{\mu}_\theta(\mathbf{x}_t, t), \boldsymbol{\Sigma}_\theta(\mathbf{x}_t, t))
+$$
 
-> 有一个很重要的细节：如果正向过程$q(\mathbf{x}_t \vert \mathbf{x}_{t-1}) = \mathcal{N}(\mathbf{x}_t; \sqrt{1 - \beta_t} \mathbf{x}_{t-1}, \beta_t\mathbf{I})$中的$\beta_t$足够小，那么逆向扩散$q(\mathbf{x}_{t-1} \vert \mathbf{x}_t)$也是高斯分布：$q(\mathbf{x}_{t-1} \vert \mathbf{x}_t) = \mathcal{N}(\mathbf{x}_{t-1}; \color{blue}{\tilde{\boldsymbol{\mu}}}(\mathbf{x}_t), \color{red}{\tilde{\beta}_t} \mathbf{I})$
+> TODO为什么：如果正向过程$q(\mathbf{x}_t \vert \mathbf{x}_{t-1}) = \mathcal{N}(\mathbf{x}_t; \sqrt{1 - \beta_t} \mathbf{x}_{t-1}, \beta_t\mathbf{I})$中的$\beta_t$足够小，那么逆向扩散$q(\mathbf{x}_{t-1} \vert \mathbf{x}_t)$也是高斯分布：$q(\mathbf{x}_{t-1} \vert \mathbf{x}_t) = \mathcal{N}(\mathbf{x}_{t-1}; \tilde{\boldsymbol{\mu}}(\mathbf{x}_t), \tilde{\beta}_t \mathbf{I})$
 
 
 :::note
@@ -135,7 +141,7 @@ Diffusion模型的损失函数公式是比较简单的，但是公式的推导�
 #### 变分下界
 与[VAE](https://www.s7ev3n.space/posts/vae/)试图一步生成图像不同，逆向过程逐步去除噪音，可以更好的近似真实的数据分布$\mathbf{p(x_0)}$，生成质量非常高的图片。也可以把逆向扩散过程理解成[马尔科夫分层自编码器(Markovian Hierarchical Variational Autoencoder,MHVAE)](https://www.zhangzhenhu.com/aigc/)，此时逆向过程中的$\mathbf{x_1, x_2, \dots, x_{T-1}}$都可以看成是隐变量。
 
-**生成模型的最终目标都是学习到真实数据的分布，即$\mathbf{p(x_0)}$**，从而可以从其中采样生成非常真实的图像。由于无法对真实数据的分布进行建模，VAE中引入了隐变量$z$，并通过对联合概率的边缘化$\mathbf{p}(x) = \int_z \mathbf{p}(x,z) dz$建模分布，并推导出$\log p(x)$的变分下界(ELBO)。逆向扩散过程也一样，只有存在更多的中间隐变量，公式VAE是一致的(详细推导见[VAE](https://www.s7ev3n.space/posts/vae/)博文中):
+**生成模型的最终目标都是学习到真实数据的分布，即$\mathbf{p(x_0)}$**，从而可以从其中采样生成非常真实的图像。由于无法对真实数据的分布进行建模，VAE中引入了隐变量$z$，并通过对联合概率的边缘化$\mathbf{p}(x) = \int_z \mathbf{p}(x,z) dz$建模分布，并推导出$\log p(x)$的变分下界(ELBO)。逆向扩散过程也一样，只是存在更多的中间隐变量，与VAE的ELBO是一致的(详细推导见[VAE](https://www.s7ev3n.space/posts/vae/)博文中):
 $$
 \begin{align}
     \log\mathbf{p(x_0)} &= \log \int_{x_1} \int_{x_2} \cdots \int_{x_T} p(x_0, x_1, \dots, x_T) dx_1 dx_2 \cdots dx_T \\
@@ -244,19 +250,19 @@ $$
 $q(\mathbf{x}_{t-1} \vert \mathbf{x}_t, \mathbf{x}_0) = \mathcal{N}(\mathbf{x}_{t-1}; {\tilde{\boldsymbol{\mu}}}(\mathbf{x}_t, \mathbf{x}_0), {\tilde{\beta}_t} \mathbf{I})$，然后继续推导：
 
 $$
-\begin{align}
-q(\mathbf{x}_{t-1} \vert \mathbf{x}_t, \mathbf{x}_0) 
-&= q(\mathbf{x}_t \vert \mathbf{x}_{t-1}, \mathbf{x}_0) \frac{ q(\mathbf{x}_{t-1} \vert \mathbf{x}_0) }{ q(\mathbf{x}_t \vert \mathbf{x}_0) } & \small{\text{via Gaussian PDF}}\\
-&\propto \exp \Big(-\frac{1}{2} \big(\frac{(\mathbf{x}_t - \sqrt{\alpha_t} \mathbf{x}_{t-1})^2}{\beta_t} + \frac{(\mathbf{x}_{t-1} - \sqrt{\bar{\alpha}_{t-1}} \mathbf{x}_0)^2}{1-\bar{\alpha}_{t-1}} - \frac{(\mathbf{x}_t - \sqrt{\bar{\alpha}_t} \mathbf{x}_0)^2}{1-\bar{\alpha}_t} \big) \Big) \\
-&= \exp \Big(-\frac{1}{2} \big(\frac{\mathbf{x}_t^2 - 2\sqrt{\alpha_t} \mathbf{x}_t \color{blue}{\mathbf{x}_{t-1}} \color{black}{+ \alpha_t} \color{red}{\mathbf{x}_{t-1}^2} }{\beta_t} + \frac{ \color{red}{\mathbf{x}_{t-1}^2} \color{black}{- 2 \sqrt{\bar{\alpha}_{t-1}} \mathbf{x}_0} \color{blue}{\mathbf{x}_{t-1}} \color{black}{+ \bar{\alpha}_{t-1} \mathbf{x}_0^2}  }{1-\bar{\alpha}_{t-1}} - \frac{(\mathbf{x}_t - \sqrt{\bar{\alpha}_t} \mathbf{x}_0)^2}{1-\bar{\alpha}_t} \big) \Big) \\
-&= \exp\Big( -\frac{1}{2} \big( \color{red}{(\frac{\alpha_t}{\beta_t} + \frac{1}{1 - \bar{\alpha}_{t-1}})} \mathbf{x}_{t-1}^2 - \color{blue}{(\frac{2\sqrt{\alpha_t}}{\beta_t} \mathbf{x}_t + \frac{2\sqrt{\bar{\alpha}_{t-1}}}{1 - \bar{\alpha}_{t-1}} \mathbf{x}_0)} \mathbf{x}_{t-1} \color{black}{ + C(\mathbf{x}_t, \mathbf{x}_0) \big) \Big)}
-\end{align}
+\begin{aligned}
+    q(\mathbf{x}_{t-1} \vert \mathbf{x}_t, \mathbf{x}_0) 
+    &= q(\mathbf{x}_t \vert \mathbf{x}_{t-1}, \mathbf{x}_0) \frac{ q(\mathbf{x}_{t-1} \vert \mathbf{x}_0) }{ q(\mathbf{x}_t \vert \mathbf{x}_0) } \quad  \small{\text{via Gaussian PDF}} \\
+    &\propto \exp \Big(-\frac{1}{2} \big(\frac{(\mathbf{x}_t - \sqrt{\alpha_t} \mathbf{x}_{t-1})^2}{\beta_t} + \frac{(\mathbf{x}_{t-1} - \sqrt{\bar{\alpha}_{t-1}} \mathbf{x}_0)^2}{1-\bar{\alpha}_{t-1}} - \frac{(\mathbf{x}_t - \sqrt{\bar{\alpha}_t} \mathbf{x}_0)^2}{1-\bar{\alpha}_t} \big) \Big) \\
+    &= \exp \Big(-\frac{1}{2} \big(\frac{\mathbf{x}_t^2 - 2\sqrt{\alpha_t} \mathbf{x}_t \color{blue}{\mathbf{x}_{t-1}} \color{black}{+ \alpha_t} \color{red}{\mathbf{x}_{t-1}^2} }{\beta_t} + \frac{ \color{red}{\mathbf{x}_{t-1}^2} \color{black}{- 2 \sqrt{\bar{\alpha}_{t-1}} \mathbf{x}_0} \color{blue}{\mathbf{x}_{t-1}} \color{black}{+ \bar{\alpha}_{t-1} \mathbf{x}_0^2}  }{1-\bar{\alpha}_{t-1}} - \frac{(\mathbf{x}_t - \sqrt{\bar{\alpha}_t} \mathbf{x}_0)^2}{1-\bar{\alpha}_t} \big) \Big) \\
+    &= \exp\Big( -\frac{1}{2} \big( \color{red}{(\frac{\alpha_t}{\beta_t} + \frac{1}{1 - \bar{\alpha}_{t-1}})} \mathbf{x}_{t-1}^2 - \color{blue}{(\frac{2\sqrt{\alpha_t}}{\beta_t} \mathbf{x}_t + \frac{2\sqrt{\bar{\alpha}_{t-1}}}{1 - \bar{\alpha}_{t-1}} \mathbf{x}_0)} \mathbf{x}_{t-1} \color{black}{ + C(\mathbf{x}_t, \mathbf{x}_0) \big) \Big)}
+\end{aligned}
 $$
 其中，$C(\mathbf{x}_t, \mathbf{x}_0)$是不包含$\mathbf{x}_{t-1}$，所以相当于常数项。上面的公式看起来有些复杂，我们整理一下$q(\mathbf{x}_{t-1} \vert \mathbf{x}_t, \mathbf{x}_0) = \mathcal{N}(\mathbf{x}_{t-1}; {\tilde{\boldsymbol{\mu}}}(\mathbf{x}_t, \mathbf{x}_0), {\tilde{\beta}_t} \mathbf{I})$的均值和方差是：
 $$
 \begin{align}
 \tilde{\beta}_t 
-&= {\frac{1 - \bar{\alpha}_{t-1}}{1 - \bar{\alpha}_t} \cdot \beta_t} \\
+&= {\frac{1 - \bar{\alpha}_{t-1}}{1 - \bar{\alpha}_t} \beta_t} \\
 \tilde{\boldsymbol{\mu}}_t (\mathbf{x}_t, \mathbf{x}_0)
 &= \frac{\sqrt{\alpha_t}(1 - \bar{\alpha}_{t-1})}{1 - \bar{\alpha}_t} \mathbf{x}_t + \frac{\sqrt{\bar{\alpha}_{t-1}}\beta_t}{1 - \bar{\alpha}_t} \mathbf{x}_0\\
 \end{align}
@@ -271,13 +277,13 @@ $$
 \end{align}
 $$
 
+最后得到：
+$$
+q(\mathbf{x}_{t-1} \vert \mathbf{x}_t, \mathbf{x}_0) \sim \mathcal{N}(\mathbf{x}_{t-1};{\frac{1}{\sqrt{\alpha_t}} \Big( \mathbf{x}_t - \frac{1 - \alpha_t}{\sqrt{1 - \bar{\alpha}_t}} \boldsymbol{\epsilon}_t \Big)}, {\frac{1 - \bar{\alpha}_{t-1}}{1 - \bar{\alpha}_t} \beta_t} \mathbf{I})
+$$
+
 #### Training Loss
-$$
-\begin{align}
-    L_{T-1}&=\sum_{t=2}^{T} \mathbb{E}_{q(x_{t} \vert x_0)}\left[ D_{KL} (q(x_{t-1} \vert x_{t}, x_0)) \parallel {p_{\theta}(x_{t-1} \vert x_{t}}\right]) \\
-    &=\sum_{t=2}^{T}
-\end{align}
-$$
+铺垫了这么多，让我们回溯一下，优化目标$L$主要是优化$L_{T-1}=\sum_{t=2}^{T} \mathbb{E}_{q(x_{t} \vert x_0)}\left[ D_{KL} (q(x_{t-1} \vert x_{t}, x_0)) \parallel {p_{\theta}(x_{t-1} \vert x_{t}}\right])$，其中我们刚刚在上一节得到$q(\mathbf{x}_{t-1} \vert \mathbf{x}_t, \mathbf{x}_0) \sim \mathcal{N}(\mathbf{x}_{t-1};{\frac{1}{\sqrt{\alpha_t}} \Big( \mathbf{x}_t - \frac{1 - \alpha_t}{\sqrt{1 - \bar{\alpha}_t}} \boldsymbol{\epsilon}_t \Big)}, {\frac{1 - \bar{\alpha}_{t-1}}{1 - \bar{\alpha}_t} \beta_t} \mathbf{I})$，并且在[逆向扩散](#逆向扩散过程)中定义$p_\theta(\mathbf{x}_{t-1} \vert \mathbf{x}_t) \sim \mathcal{N}(\mathbf{x}_{t-1}; \boldsymbol{\mu}_\theta(\mathbf{x}_t, t), \boldsymbol{\Sigma}_\theta(\mathbf{x}_t, t))$，那么我们代入到$L_{T-1}$中进行KL散度的计算。
 
 :::tip
 两个高斯分布的KL散度计算：
@@ -289,6 +295,8 @@ $$
 其中$d$是随机变量$x$的维度。
 :::
 
+在代入公式前，DDPM论文对$p_\theta(\mathbf{x}_{t-1} \vert \mathbf{x}_t) \sim \mathcal{N}(\mathbf{x}_{t-1}; \boldsymbol{\mu}_\theta(\mathbf{x}_t, t), \boldsymbol{\Sigma}_\theta(\mathbf{x}_t, t))$中的$\boldsymbol{\Sigma}_\theta(\mathbf{x}_t, t)$进行的简化，即设置此项为常量，我们可以设置其与$q(\mathbf{x}_{t-1} \vert \mathbf{x}_t, \mathbf{x}_0)$的方差相同。
+
 $$
 \begin{aligned}
 & \quad \ D_{KL}({q(x_{t-1}|x_t, x_0)} \parallel {p_{{\theta}}(x_{t-1}|x_t)}) \\
@@ -298,6 +306,23 @@ $$
 &=\frac{1}{2}\left[\log1 - d + d + ({\mu}_{{\theta}}-{\mu}_q)^T {\Sigma}_q(t)^{-1} ({\mu}_{{\theta}}-{\mu}_q)\right]\\
 &=\frac{1}{2}\left[({\mu}_{{\theta}}-{\mu}_q)^T {\Sigma}_q(t)^{-1} ({\mu}_{{\theta}}-{\mu}_q)\right]\\
 &=\frac{1}{2}\left[({\mu}_{{\theta}}-{\mu}_q)^T \left(\sigma_q^2(t)\textbf{I}\right)^{-1} ({\mu}_{{\theta}}-{\mu}_q)\right]\\
-&=\frac{1}{2\sigma_q^2(t)}\left[\left\lVert{\mu}_{{\theta}}-{\mu}_q\right\rVert_2^2\right]
+&=\frac{1}{2\sigma_q^2(t)}\left[\left\lVert{\mu}_{{\theta}}(\mathbf{x}_t,t)-{\mu}_q(\mathbf{x}_t,\mathbf{x}_0)\right\rVert_2^2\right]
 \end{aligned}
 $$
+
+到这里可以发现，最终模型的优化目标是$q(\mathbf{x}_{t-1} \vert \mathbf{x}_t, \mathbf{x}_0)$分布的均值${\mu}_q(\mathbf{x}_t,\mathbf{x}_0)$。DDPM论文在这里进行了重要的改进:**既然$\mu_{\theta}(\mathbf{x}_t,t)$要尽量近似${\mu}_q(\mathbf{x}_t,\mathbf{x}_0)$，那么可以假设$\mu_{\theta}(\mathbf{x}_t,t)$与其有相似的形式**：
+$$
+{\mu}_{{\theta}}(x_t, t) = \frac{1}{\sqrt{\alpha_t}}x_t - \frac{1 - \alpha_t}{\sqrt{1 - \bar\alpha_t}\sqrt{\alpha_t}} {\epsilon}_{ {\theta}}(x_t, t)
+$$
+这里引入了新的近似函数$\epsilon_{\theta}(x_t, t)$，即输入$x_t$预测噪音$\epsilon$。
+
+$$
+\begin{aligned}
+& \quad \frac{1}{2\sigma_q^2(t)}\Big[ \| {{\boldsymbol{\mu}_\theta(\mathbf{x}_t, t)- \tilde{\boldsymbol{\mu}}_t(\mathbf{x}_t, \mathbf{x}_0)}} \|^2 \Big] \\
+&= \frac{1}{2\sigma_q^2(t)} \Big[ \|  {\frac{1}{\sqrt{\alpha_t}} \Big( \mathbf{x}_t - \frac{1 - \alpha_t}{\sqrt{1 - \bar{\alpha}_t}} \boldsymbol{\boldsymbol{\epsilon}}_\theta(\mathbf{x}_t, t) \Big)} - {\frac{1}{\sqrt{\alpha_t}} \Big( \mathbf{x}_t - \frac{1 - \alpha_t}{\sqrt{1 - \bar{\alpha}_t}} \boldsymbol{\epsilon}_t \Big)} \|^2 \Big] \\
+&= \frac{ (1 - \alpha_t)^2 }{2 \alpha_t (1 - \bar{\alpha}_t) \sigma_q^2(t)} \Big[ \|\boldsymbol{\boldsymbol{\epsilon}_\theta(\mathbf{x}_t, t) - \epsilon}_t \|^2 \Big] \\
+&= \frac{ (1 - \alpha_t)^2 }{2 \alpha_t (1 - \bar{\alpha}_t) \sigma_q^2(t)} \Big[\|\boldsymbol{\boldsymbol{\epsilon}_\theta(\sqrt{\bar{\alpha}_t}\mathbf{x}_0 + \sqrt{1 - \bar{\alpha}_t}\boldsymbol{\epsilon}_t, t)-\epsilon}_t\|^2 \Big] 
+\end{aligned}
+$$
+
+其中$\epsilon_t$表示前向扩散过程$t-1$步到$t$步中所添加的高斯噪音，即模型从预测均值$\mu_t$变成预测噪音$\epsilon_t$。
