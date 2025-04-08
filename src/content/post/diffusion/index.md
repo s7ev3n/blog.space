@@ -7,7 +7,7 @@ tags: ["tech/generative"]
 
 > Diffusion Model（扩散模型）是目前图像、视频生成模型的基础，其核心思想是通过逐步添加噪声（正向扩散）和逐步去噪（反向生成）的过程，将数据从原始分布逐步转换为噪声分布，再通过学习逆过程逐步去除噪音生成高质量样本。
 
-## Denoising Diffusion Model
+## Denoising Diffusion Probabilistic Model
 Diffusion model早在2015年论文[^1]中提出，但是在2020年Denoising Diffusion Probabilistic Model, DDPM[^2]工作中得到显著改进，可以生成高质量图像。扩散模型被人熟知包含正向加噪过程和反向去噪过程。
 
 [^1]: [Deep Unsupervised Learning using Nonequilibrium Thermodynamics](https://arxiv.org/abs/1503.03585)
@@ -120,7 +120,7 @@ $$
 $$
 其中，$\theta$是DDPM模型的权重参数。
 
-由于真实的逆向扩散$q(\mathbf{x}_{t-1} \vert \mathbf{x}_t)$服从高斯分布，因此**模型近似的逆向扩散同样服从高斯分布**：
+由于真实的逆向扩散$q(\mathbf{x}_{t-1} \vert \mathbf{x}_t)$服从高斯分布，因此**可以假设模型近似的逆向扩散$p_\theta(\mathbf{x}_{t-1} \vert \mathbf{x}_t)$同样服从高斯分布**：
 $$
 p_\theta(\mathbf{x}_{t-1} \vert \mathbf{x}_t) \sim \mathcal{N}(\mathbf{x}_{t-1}; \boldsymbol{\mu}_\theta(\mathbf{x}_t, t), \boldsymbol{\Sigma}_\theta(\mathbf{x}_t, t))
 $$
@@ -182,10 +182,6 @@ $$
 \end{align}
 $$
 
-> 请注意的是：上面的公式和DDPM论文公式(5)和What are Diffusion Models?[^4]中的公式目前还不同，不要着急，请往后面看，后面的推导会让公式相同。
-
-[^4]: [What are Diffusion Models?](https://lilianweng.github.io/posts/2021-07-11-diffusion-models/)，不适合初学者
-
 <details>
 <summary>详细推导过程:</summary>
 
@@ -196,17 +192,20 @@ $$
 $$
 </details>
 
-![diffusion_derivation_1](./figs/diffusion_first_derivation.png)
+> 请注意的是：上面的公式和DDPM论文公式(5)和What are Diffusion Models?[^4]中的公式目前还不同，不要着急，请往后面看，后面的推导会让公式相同。
+
+[^4]: [What are Diffusion Models?](https://lilianweng.github.io/posts/2021-07-11-diffusion-models/)，不适合初学者
 
 注意到优化目标被拆分为三大类，$T+1$项：
 - DDPM论文中的$L_0$被称为重建项(reconstruction term)，它和VAE中ELBO的第一项是一样的，从隐变量$x_1$恢复真实数据$x_0$
 - DDPM论文中的$L_T$被称为先验匹配项(prior term)，由于$p(x_T)$和前向扩散$q(x_T \vert x_{T-1})$是已知的，所以这项属于常数项，在优化过程可以忽略
-- DDPM论文中的$L_{T-1}$被称为一致性项(consistency term)，是真正要优化的目标：真实的正向扩散$q(x_{t}\vert x_{t-1})$和模型估计的逆向扩散$p_{\theta}(x_t\vert x_{t+1})$的KL散度，即逆向扩散得到的$x_t$逼近正向扩散得到的$x_t$。但是，这里需要对$x_{t-1}, x_{t+1}$同时采样，如果使用MCMC采样求期望，同时对两个随机变量进行采样，会导致更大的方差，使得优化过程不稳定，因此直接优化$L_{T-1}$并不可行[^3]。
+- DDPM论文中的$L_{T-1}$被称为一致性项(consistency term)，是真正要优化的目标：真实的**正向**扩散$q(x_{t}\vert x_{t-1})$和模型估计的逆向扩散$p_{\theta}(x_t\vert x_{t+1})$的KL散度，即逆向扩散得到的$x_t$逼近正向扩散得到的$x_t$。但是，这里需要对$x_{t-1}, x_{t+1}$同时采样，如果使用MCMC采样求期望，同时对两个随机变量进行采样，会导致更大的方差，使得优化过程不稳定，因此直接优化$L_{T-1}$并不可行[^3]。下图可以更直观的描述这个过程：
+
+![diffusion_derivation_1](./figs/diffusion_first_derivation.png)
 
 [^3]: [DPM解读(图2.1.4)](https://www.zhangzhenhu.com/aigc/%E6%89%A9%E6%95%A3%E6%A6%82%E7%8E%87%E6%A8%A1%E5%9E%8B.html#diffusion-probabilistic-model)
 
 #### 重写变分下界
-前向过程的后验分布(Foward process posteriors)$q(x_{t-1}\vert x_t)$
 
 对$L_{T-1}$的改造：$q(x_t \vert x_{t-1}) = q(x_t \vert x_{t-1}, x_0)$，由于扩散过程是马尔科夫过程，所以条件概率中增加$x_0$后是等价的。
 引入$x_0$不仅可以对$L$进行改写(Parameterization)，还可以使得不可计算的$q(x_t \vert x_{t-1})$变成可以计算的$q(x_t \vert x_{t-1}, x_0)$。
@@ -223,7 +222,7 @@ $$
     &= \begin{aligned}
       &-{\underbrace{\mathbb{E}_{q(x_{1} \vert x_0)}\left[\log p_{\theta}(x_0|x_1)\right]}_{L_{0}\text{: reconstruction term}}}\\
       &+ {\underbrace{\mathbb{E}_{q(x_{T-1} \vert x_0)}\left[ D_{KL}(q(x_T \vert x_{0}) \parallel {p(x_T)}\right])}_{L_T\text{: prior matching term}}} \\
-      &+ {\sum_{t=2}^{T}\underbrace{\mathbb{E}_{q(x_{t} \vert x_0)}\left[ D_{KL} (q(x_{t-1} \vert x_{t}, \red{x_0})) \parallel {p_{\theta}(x_{t-1} \vert x_{t}}\right])}_{L_{T-1}\text{: denoising matching term}}}
+      &+ {\sum_{t=2}^{T}\underbrace{\mathbb{E}_{q(x_{t} \vert x_0)}\left[ D_{KL} (q(\red{x_{t-1} \vert x_{t}, x_0})) \parallel {p_{\theta}(x_{t-1} \vert x_{t}}\right])}_{L_{T-1}\text{: denoising matching term}}}
     \end{aligned} 
 \end{align}
 $$
@@ -238,15 +237,17 @@ $$
 $$
 </details>
 
+此时得到的优化目标和DDPM论文终于一致，看下每一项都有什么变化：
+- 重建项$L_0$没有任何变化
+- 先验匹配项$L_T$从$q(x_T \vert x_{T-1})$变成了$q(x_T \vert x_{0})$，由于正向扩散已知，所以这一项基本等于没有变化
+- $L_{T-1}$有巨大的变化(改称为denosing matching term)：从**正向**扩散$q(x_{t} \vert x_{t-1})$变为了**逆向**扩散$q(\red{x_{t-1} \vert x_{t}, x_0})$，方向和$p_{\theta}(x_t \vert x_{t-1})$变为相同，直观变化见下图。另外，条件概率中增加了$x_0$之后，采样只需要采样一个变量$x_t$即可。
 ![diffusion_derivation_2](./figs/diffusion_second_derivation.png)
 
-此时得到的优化目标和论文中一致，与上面的公式对比：
-- 重建项$L_0$没有任何变化
-- 先验匹配项$L_T$从$q(x_T \vert x_{T-1})$变成了$q(x_T \vert x_{0})$，由于正向扩散已知，所以这一项基本没有变化
-- $L_{T-1}$有不小的变化(改称为denosing matching term)：从正向扩散$q(x_{t} \vert x_{t-1})$变为了逆向扩散$q(x_{t-1} \vert x_{t}, \red{x_0})$，并且条件概率中增加了$x_0$之后，采样只需要采样一个变量$x_t$即可
+
+> 现在问题是如何处理$q(\red{x_{t-1} \vert x_{t}, x_0})$？这是前向过程的后验分布(foward process posteriors)$q(x_{t-1}\vert x_t)$中引入$x_0$的原因，因为这使得它变得可计算(tractable)了。
 
 **第二，可计算的$q(x_t \vert x_{t-1}, x_0)$：**
-[逆向过程](#reverse-diffusion-process)中提到，$q(x_{t-1} \vert x_{t})$也是一个高斯分布，但是它的参数需要整个数据集计算来估计，基本是不可计算的(intractable)，但是增加了$x_0$之后，就可以计算了，定义
+[逆向过程](#逆向扩散过程)中提到，$q(x_{t-1} \vert x_{t})$也是一个高斯分布，但是它的参数需要整个数据集计算来估计，基本是不可计算的(intractable)，但是增加了$x_0$之后，就可以计算了，定义
 $q(\mathbf{x}_{t-1} \vert \mathbf{x}_t, \mathbf{x}_0) = \mathcal{N}(\mathbf{x}_{t-1}; {\tilde{\boldsymbol{\mu}}}(\mathbf{x}_t, \mathbf{x}_0), {\tilde{\beta}_t} \mathbf{I})$，然后继续推导：
 
 $$
@@ -310,11 +311,12 @@ $$
 \end{aligned}
 $$
 
-到这里可以发现，最终模型的优化目标是$q(\mathbf{x}_{t-1} \vert \mathbf{x}_t, \mathbf{x}_0)$分布的均值${\mu}_q(\mathbf{x}_t,\mathbf{x}_0)$。DDPM论文在这里进行了重要的改进:**既然$\mu_{\theta}(\mathbf{x}_t,t)$要尽量近似${\mu}_q(\mathbf{x}_t,\mathbf{x}_0)$，那么可以假设$\mu_{\theta}(\mathbf{x}_t,t)$与其有相似的形式**：
+到这里可以发现，最终模型的优化目标是$q(\mathbf{x}_{t-1} \vert \mathbf{x}_t, \mathbf{x}_0)$分布的均值${\mu}_q(\mathbf{x}_t,\mathbf{x}_0)$。
+既然$\mu_{\theta}(\mathbf{x}_t,t)$要尽量近似${\mu}_q(\mathbf{x}_t,\mathbf{x}_0)$，那么不妨假设$\mu_{\theta}(\mathbf{x}_t,t)$与其有相似的形式，并且利用公式$(24)$进行展开，**DDPM[^2]在这里对DPM[^1]进行了重要的改进(了解DPM):将$\epsilon_t$变为$x_t$的函数${\epsilon}_{ {\theta}}(x_t, t)$**：
 $$
 {\mu}_{{\theta}}(x_t, t) = \frac{1}{\sqrt{\alpha_t}}x_t - \frac{1 - \alpha_t}{\sqrt{1 - \bar\alpha_t}\sqrt{\alpha_t}} {\epsilon}_{ {\theta}}(x_t, t)
 $$
-这里引入了新的近似函数$\epsilon_{\theta}(x_t, t)$，即输入$x_t$预测噪音$\epsilon$。
+近似函数$\epsilon_{\theta}(x_t, t)$表示输入$x_t$预测正向过程添加的噪音$\epsilon$。
 
 $$
 \begin{aligned}
@@ -325,4 +327,4 @@ $$
 \end{aligned}
 $$
 
-其中$\epsilon_t$表示前向扩散过程$t-1$步到$t$步中所添加的高斯噪音，即模型从预测均值$\mu_t$变成预测噪音$\epsilon_t$。
+其中$\epsilon_t$表示前向扩散过程$t-1$步到$t$步中所添加的高斯噪音，即**模型从预测均值$\mu_t$变成预测噪音$\epsilon_t$**。
