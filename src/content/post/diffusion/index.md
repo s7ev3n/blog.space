@@ -197,7 +197,7 @@ $$
 [^4]: [What are Diffusion Models?](https://lilianweng.github.io/posts/2021-07-11-diffusion-models/)，不适合初学者
 
 注意到优化目标被拆分为三大类，$T+1$项：
-- DDPM论文中的$L_0$被称为重建项(reconstruction term)，它和VAE中ELBO的第一项是一样的，从隐变量$x_1$恢复真实数据$x_0$
+- DDPM论文中的$L_0$被称为重建项(reconstruction term)，它和VAE中ELBO的第一项是相似的，从隐变量$x_1$恢复真实数据$x_0$。$L_0$项在DDPM论文$3.3$节有讨论，
 - DDPM论文中的$L_T$被称为先验匹配项(prior term)，由于$p(x_T)$和前向扩散$q(x_T \vert x_{T-1})$是已知的，所以这项属于常数项，在优化过程可以忽略
 - DDPM论文中的$L_{T-1}$被称为一致性项(consistency term)，是真正要优化的目标：真实的**正向**扩散$q(x_{t}\vert x_{t-1})$和模型估计的逆向扩散$p_{\theta}(x_t\vert x_{t+1})$的KL散度，即逆向扩散得到的$x_t$逼近正向扩散得到的$x_t$。但是，这里需要对$x_{t-1}, x_{t+1}$同时采样，如果使用MCMC采样求期望，同时对两个随机变量进行采样，会导致更大的方差，使得优化过程不稳定，因此直接优化$L_{T-1}$并不可行[^3]。下图可以更直观的描述这个过程：
 
@@ -328,3 +328,5 @@ $$
 $$
 
 其中$\epsilon_t$表示前向扩散过程$t-1$步到$t$步中所添加的高斯噪音，即**模型从预测均值$\mu_t$变成预测噪音$\epsilon_t$**。
+
+#### Simplified Loss
