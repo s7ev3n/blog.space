@@ -136,9 +136,9 @@ $$
 
 ### 优化目标
 
-Diffusion模型的损失函数公式是比较简单的，但是公式的推导是比较复杂的！
+Diffusion模型优化目标的结论是比较简单的，但是公式的推导和理解是需要静下心来慢慢看懂、推导的！
 
-#### 变分下界
+#### Variational Lower Bound
 与[VAE](https://www.s7ev3n.space/posts/vae/)试图一步生成图像不同，逆向过程逐步去除噪音，可以更好的近似真实的数据分布$\mathbf{p(x_0)}$，生成质量非常高的图片。也可以把逆向扩散过程理解成[马尔科夫分层自编码器(Markovian Hierarchical Variational Autoencoder,MHVAE)](https://www.zhangzhenhu.com/aigc/)，此时逆向过程中的$\mathbf{x_1, x_2, \dots, x_{T-1}}$都可以看成是隐变量。
 
 **生成模型的最终目标都是学习到真实数据的分布，即$\mathbf{p(x_0)}$**，从而可以从其中采样生成非常真实的图像。由于无法对真实数据的分布进行建模，VAE中引入了隐变量$z$，并通过对联合概率的边缘化$\mathbf{p}(x) = \int_z \mathbf{p}(x,z) dz$建模分布，并推导出$\log p(x)$的变分下界(ELBO)。逆向扩散过程也一样，只是存在更多的中间隐变量，与VAE的ELBO是一致的(详细推导见[VAE](https://www.s7ev3n.space/posts/vae/)博文中):
@@ -168,6 +168,14 @@ $$
 f(\mathbb{E}[X]) \geq \mathbb{E(f(X))}
 $$
 由于$\log$函数是凹函数，所以上面公式适用这个情况。
+:::
+
+:::important
+**为什么优化目标是最大化边缘概率$\log\mathbf{p(x_0)}$，而不是使用最大似然优化联合概率$p(x_T)\prod_{t=1}^{T}p_{\theta}(x_{t-1}|x_t) d_{x_{1:T}}$？**
+
+1. 关心的是最终模型生成的数据$\mathbf{x_0}$，而不是中间每一步的隐变量，中间每一步的隐变量无需显示优化
+2. 最大化边缘概率$\log\mathbf{p(x_0)}$和最大化联合概率$p(x_T)\prod_{t=1}^{T}p_{\theta}(x_{t-1}|x_t) d_{x_{1:T}}$两者不等价。联合分布的优化需要指定所有中间状态$x_{1:T}$的具体路径，但在实际生成过程中，中间状态是隐变量（即未被观测到的），存在无数可能的路径。直接优化联合分布会引入大量冗余计算，而边缘分布通过积分（或求和）隐变量$x_{1:T}$，避免了路径的显式依赖。
+3. 边缘分布是“所有路径的平均”。路径这个解释很直观，从$x_T$到$x_0$可能存在无穷多条路径，得到$p(x_0)$需要得到所有可能的路径的期望。边缘分布定义中的多元积分（先固定某一个变量，遍历另外变量的所有可能）即是对所有可能路径的概率加权平均。
 :::
 
 优化目标$L$是最大化($L_{VLB}$)，等价于最小化$-L_{VLB}$(Variational Lower Bound or Evidence lower bound, ELBO)，可以将公式$L_{VLB}$进一步拆解[^2]:
@@ -205,7 +213,7 @@ $$
 
 [^3]: [DPM解读(图2.1.4)](https://www.zhangzhenhu.com/aigc/%E6%89%A9%E6%95%A3%E6%A6%82%E7%8E%87%E6%A8%A1%E5%9E%8B.html#diffusion-probabilistic-model)
 
-#### 重写变分下界
+#### Rewrite Variational Lower Bound
 
 对$L_{T-1}$的改造：$q(x_t \vert x_{t-1}) = q(x_t \vert x_{t-1}, x_0)$，由于扩散过程是马尔科夫过程，所以条件概率中增加$x_0$后是等价的。
 引入$x_0$不仅可以对$L$进行改写(Parameterization)，还可以使得不可计算的$q(x_t \vert x_{t-1})$变成可以计算的$q(x_t \vert x_{t-1}, x_0)$。
@@ -312,7 +320,7 @@ $$
 $$
 
 到这里可以发现，最终模型的优化目标是$q(\mathbf{x}_{t-1} \vert \mathbf{x}_t, \mathbf{x}_0)$分布的均值${\mu}_q(\mathbf{x}_t,\mathbf{x}_0)$。
-既然$\mu_{\theta}(\mathbf{x}_t,t)$要尽量近似${\mu}_q(\mathbf{x}_t,\mathbf{x}_0)$，那么不妨假设$\mu_{\theta}(\mathbf{x}_t,t)$与其有相似的形式，并且利用公式$(24)$进行展开，**DDPM[^2]在这里对DPM[^1]进行了重要的改进(了解DPM):将$\epsilon_t$变为$x_t$的函数${\epsilon}_{ {\theta}}(x_t, t)$**：
+既然$\mu_{\theta}(\mathbf{x}_t,t)$要尽量近似${\mu}_q(\mathbf{x}_t,\mathbf{x}_0)$，那么不妨假设$\mu_{\theta}(\mathbf{x}_t,t)$与其有相似的形式，并且利用公式$(24)$进行展开，**DDPM[^2]在这里对DPM[^1]进行了重要的改进(了解DPM):将$\epsilon_t$变为$x_t$和$t$的函数${\epsilon}_{ {\theta}}(x_t, t)$**：
 $$
 {\mu}_{{\theta}}(x_t, t) = \frac{1}{\sqrt{\alpha_t}}x_t - \frac{1 - \alpha_t}{\sqrt{1 - \bar\alpha_t}\sqrt{\alpha_t}} {\epsilon}_{ {\theta}}(x_t, t)
 $$
@@ -330,3 +338,29 @@ $$
 其中$\epsilon_t$表示前向扩散过程$t-1$步到$t$步中所添加的高斯噪音，即**模型从预测均值$\mu_t$变成预测噪音$\epsilon_t$**。
 
 #### Simplified Loss
+DDPM论文中，通过实验发现，忽略上面公式中的权重$\frac{ (1 - \alpha_t)^2 }{2 \alpha_t (1 - \bar{\alpha}_t)\sigma_q^2(t)}$可以有更好的结果:
+
+$$
+\begin{aligned}
+L_t^\text{simple}
+&= \mathbb{E}_{t \sim [1, T], \mathbf{x}_0, \boldsymbol{\epsilon}_t} \Big[\| \boldsymbol{\epsilon}_\theta(\mathbf{x}_t, t) - \boldsymbol{\epsilon}_t \|^2 \Big] \\
+&= \mathbb{E}_{t \sim [1, T], \mathbf{x}_0, \boldsymbol{\epsilon}_t} \Big[\|\boldsymbol{\epsilon}_\theta(\sqrt{\bar{\alpha}_t}\mathbf{x}_0 + \sqrt{1 - \bar{\alpha}_t}\boldsymbol{\epsilon}_t, t)\|^2 - \boldsymbol{\epsilon}_t \Big]
+\end{aligned}
+$$
+
+### Training and Sampling (Generate)
+训练过程见如下伪代码：
+- 从标准高斯分布中随机采样一个噪声，注意每一个时刻都是独立重新采样的随机高斯噪声，所以不同步$t$，$\epsilon$是不一样的值
+- 代入上式中计算得到$x_t$
+- 把$x_t$和$t$和输入模型，模型输出值$\epsilon_{{\theta}}(x_t, t)$作为预测噪声
+- 最小化$\epsilon$与$\epsilon_{{\theta}}(x_t, t)$之间的平方误差
+
+![diffusion training](./figs/diffusion_training.png)
+
+采样过程，即生成过程的伪代码如下：
+![diffusion generate](./figs/diffusion_sampling.png)
+在采样（图像生成）过程有一个细节，最后生成的图像(输出值)$\tilde{x}_0$并不是通过$x_{t-1}$计算得到的。而最终生成的图像$x_0$是根据下面公式得到的，当$t=1$时，$\tilde{x}_0$和$\tilde{\mu}$是相等的，
+$$
+\begin{align}\begin{aligned}\tilde{\mu} &= \frac{1} {\sqrt{\alpha_t}} (x_t - \frac{\beta_t}{\sqrt{1-\bar{\alpha_t}} } \epsilon_{\theta}(x_t,t) )\\&=  \frac{1} {\sqrt{\alpha_1}} (x_1 - \frac{1-\alpha_1}{\sqrt{1-\bar{\alpha_1}} } \bar{\epsilon} )\\&=  \frac{1} {\sqrt{\alpha_1}} (x_1 - \frac{1-\alpha_1}{\sqrt{1-\bar{\alpha_1}} } \bar{\epsilon} )\\&=  \frac{1} {\sqrt{\alpha_1}} (x_1 - \frac{1-\alpha_1}{\sqrt{1-\alpha_1} } \bar{\epsilon} )\\&=  \frac{1} {\sqrt{\alpha_1}} (x_1 -  \sqrt{1-\alpha_1}  \bar{\epsilon} )\\&=  \tilde{x}_0\end{aligned}\end{align}
+$$
+> 也就是说我们最终输出的$\tilde{x}_0$是$q(x_{t-1}|x_t, x_0,t=1)$，而不是$q(x_{t-1}|x_t, x_0,t=1)$的采样值。
