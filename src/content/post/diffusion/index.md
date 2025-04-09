@@ -25,7 +25,7 @@ Diffusion model早在2015年论文[^1]中提出，但是在2020年Denoising Diff
 这两个过程的存在，实际上是为了应对生成模型中的一个核心难题：**如何在复杂的分布中采样**。生成模型，比如GAN，直接从随机噪声中生成数据，但这种方式容易导致模式崩塌（mode collapse），即生成的样本多样性不足。而Denoising Diffusion Model通过正向和反向过程，把生成任务分解成多个小步骤，每一步都只学习一个简单的任务——添加或去除噪声。这种分步学习的方式，不仅提高了模型的稳定性，还显著提升了生成样本的质量和多样性。
 
 ### 正向扩散过程
-我们令$\mathbf{x_0}$为原始图像，从真实的数据分布$\mathbb{q(x)}$从采样，是正向过程初始时的数据，从$0$到$T$步，逐渐加入噪音，经过足够多的步数，最终$\mathbf{x_T}$为从标准高斯分布中随机采样出来的(噪音)数据，即$\mathbf{x_T} \sim \mathcal{N}(\mathbf{0},\mathbf{I})$。正向过程可以使用下图（来自[^2]）表示:
+我们令$\mathbf{x_0}$为真实数据图像，从真实的数据分布$\mathbb{q(x)}$从采样，是正向过程初始时的数据，从$0$到$T$步，逐渐加入微小的噪音，经过足够多的步数，最终$\mathbf{x_T}$为从标准高斯分布中随机采样出来的(噪音)数据，即$\mathbf{x_T} \sim \mathcal{N}(\mathbf{0},\mathbf{I})$。正向过程可以使用下图（来自[^2]）表示:
 ![forward_diff](./figs/forward_diffusion.png)
 
 正向扩散过程定义为马尔科夫过程（即当前步$t$只与上一步$t-1$有关）：
@@ -41,16 +41,49 @@ $$
 \end{equation}
 $$
 
-**你可能会奇怪$\beta_t$是什么？为什么这个正态分布要定义成这个形式？下面推导进行说明，这样定义有非常良好的性质。**
-
-前向过程的定义可以得到一个非常优良的性质：可以在任意步$t$可以使用一个解析解进行采样。我们推导一下，第$t$步和前一步$t-1$的推导关系是：
+利用重参数化(Reparameterization Trick)从$\mathcal{N}(\mathbf{x}_t; \sqrt{1 - \beta_t} \mathbf{x}_{t-1}, \beta_t\mathbf{I})$进行采样：
 $$
 \begin{equation}
     \mathbf{x_t} = \sqrt{1-\beta_t}\mathbf{x_{t-1}} + \sqrt{\beta_t}\epsilon_{t}, \quad \epsilon_t \sim \mathcal{N}(\mathbf{0},\mathbf{I})
 \end{equation}
 $$
 
-我们试着展开这个递推公式，展开之前，我们先对变量做一些变换，有助于公式的推导，令$\alpha_t=1-\beta_t$：
+:::tip
+**正态分布的线性变换性质：可以将标准正态分布转换为任意均值和方差的正态分布** 若随机变量$Z\sim \mathcal{N}(0,1)$，则对任意常数$\mu$和$\sigma$，随机变量$X=\mu + \sigma Z$，服从$X \sim \mathcal{N}(\mu, \sigma^2)$
+
+**重参数化(Reparameterization Trick)技巧是一种将随机变量的采样过程分解为确定性部分和随机噪声部分的方法** 
+$$
+X = \underbrace{\mu}_{确定性参数} + \sigma \underbrace{\epsilon}_{随机噪声}, \quad \epsilon \sim \mathcal{N}(0,1)
+$$
+重参数化计算得到的随机变量$x_t$依然服从$\mathcal{N}(\mu, \sigma^2)$
+:::
+
+#### Parameterization of $\beta_t$
+**$\beta_t$是什么？**
+
+$\beta_t$对前向扩散过程中对噪音进行控制的参数，在DDPM[^2]论文中，$\beta_t$是从$\beta_1=10^{-4}$到$\beta_T=0.02$线性增加的常量，$T=1000$。对比归一化$[-1,1]$之后的像素值，$\beta_t$是很小的值，即每一步添加的噪音是很小的。
+
+**为什么使用$\sqrt{\beta_t}$对方差进行缩放？**
+
+这会涉及到两种不同的控制方差的方法：`Variance Exploding` vs `Variance Preserving`。
+- `Variance Exploding`方差爆炸:
+$$
+x_t=x_{t-1} + \sqrt \beta_t \epsilon
+$$
+
+假设初始方差是$Var(x_0)=I$，方差的变化：$Var(x_1)=Var(x_0)+\beta_1 I=I+\beta_1 I$，递推下去$Var(x_T)=Var(x_0)+\sum_{t=1}^{T}\beta_t$，
+即经过$T$步之后，方差$I+\sum_{t=1}^{T}\beta_t$会随着扩散步数$T$增大（“爆炸”），训练和采样都会变得不稳定。
+
+- `Variance Preserving`方差保持
+DDPM采用的是这个控制方差的方法通过缩放避免方差爆炸：
+$$
+x_t=\sqrt \alpha_t x_{t-1} + \sqrt \beta_t \epsilon, \quad \alpha_t + \beta_t=1
+$$
+方差的变化：$Var(x_1)=\alpha_1 Var(x_0) + \beta_1 I = I$，递推下去，$Var(x_T)$保持不变，所以称为方差保持。
+
+**重写采样公式**
+
+我们试着展开上面的采样公式，展开之前，我们先对变量做一些变换，有助于公式的推导，令$\alpha_t=1-\beta_t$：
 $$
 \begin{align}
     \mathbf{x_t} &= \sqrt{\alpha_t}\mathbf{x_{t-1}} + \sqrt{1-\alpha_t}\epsilon_{t} \\
@@ -89,12 +122,7 @@ q(\mathbf{x}_t \vert \mathbf{x}_0) = \mathcal{N}(\mathbf{x}_t; \sqrt{1-\bar{\bet
 $$
 
 :::tip
-如果你也有这些的问题：
-- 1.每一步加的噪音为什么不是直接加和$\epsilon_t$，而是要对$\epsilon_t$使用$\sqrt{\beta_t}$进行缩放？
-
-$\beta_t$是预先定义的标量值，用来控制所加噪声的强度，它不是一个固定值，而是随着步数而变化，如此可以逐步加入噪音。如果直接加入$\epsilon_t$，每一步的噪声都是固定的，这会导致在反向去噪过程中(reverse diffusion process)，难以逐步恢复。
-
-- 2.为什么经过$\mathbf{T}$步骤的逐渐加噪音，$\mathbf{x_T}$最后会服从标准正态分布？
+为什么经过$\mathbf{T}$步骤的逐渐加噪音，$\mathbf{x_T}$最后会服从标准正态分布？
 
 使用中心极限定理可以比较简单的说明。中心极限定理（central limit theorem/CLT）是概率论核心定理之一。假设有<code>独立同分布(i.i.d)</code>的随机变量$\mathbf{X_1, X_2,...,X_n}$，总体均值为$\mu$，方差为$\sigma^2$，当样本量$n$足够大的时候，样本均值$\bar{\mathbf{X}}=\frac{1}{n}\sum_{i=1}^{n}\mathbf{X_i}$趋近于标准正态分布
 $$
@@ -102,6 +130,7 @@ $$
 \sim
 \mathcal{N}(\mathbf{0},\mathbf{I})
 $$
+正向扩散过程每一步添加的随机变量都是独立同分布与标准正态分布，因此，最后加和得到的$x_T$无限趋近于标准正态分布。
 :::
 
 [^2]: [SIGGRAPH 2023 Course on Diffusion Models](https://dl.acm.org/doi/10.1145/3587423.3595503)
@@ -125,7 +154,7 @@ $$
 p_\theta(\mathbf{x}_{t-1} \vert \mathbf{x}_t) \sim \mathcal{N}(\mathbf{x}_{t-1}; \boldsymbol{\mu}_\theta(\mathbf{x}_t, t), \boldsymbol{\Sigma}_\theta(\mathbf{x}_t, t))
 $$
 
-> TODO为什么：如果正向过程$q(\mathbf{x}_t \vert \mathbf{x}_{t-1}) = \mathcal{N}(\mathbf{x}_t; \sqrt{1 - \beta_t} \mathbf{x}_{t-1}, \beta_t\mathbf{I})$中的$\beta_t$足够小，那么逆向扩散$q(\mathbf{x}_{t-1} \vert \mathbf{x}_t)$也是高斯分布：$q(\mathbf{x}_{t-1} \vert \mathbf{x}_t) = \mathcal{N}(\mathbf{x}_{t-1}; \tilde{\boldsymbol{\mu}}(\mathbf{x}_t), \tilde{\beta}_t \mathbf{I})$
+> [TODO] 为什么：如果正向过程$q(\mathbf{x}_t \vert \mathbf{x}_{t-1}) = \mathcal{N}(\mathbf{x}_t; \sqrt{1 - \beta_t} \mathbf{x}_{t-1}, \beta_t\mathbf{I})$中的$\beta_t$足够小，那么逆向扩散$q(\mathbf{x}_{t-1} \vert \mathbf{x}_t)$也是高斯分布：$q(\mathbf{x}_{t-1} \vert \mathbf{x}_t) = \mathcal{N}(\mathbf{x}_{t-1}; \tilde{\boldsymbol{\mu}}(\mathbf{x}_t), \tilde{\beta}_t \mathbf{I})$
 
 
 :::note
@@ -191,7 +220,7 @@ $$
 $$
 
 <details>
-<summary>详细推导过程:</summary>
+<summary>[TODO]详细推导过程:</summary>
 
 $$
 \begin{aligned}
@@ -236,7 +265,7 @@ $$
 $$
 
 <details>
-<summary>详细推导过程2:</summary>
+<summary>[TODO]详细推导过程2:</summary>
 
 $$
 \begin{aligned}
