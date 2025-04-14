@@ -86,20 +86,33 @@ $$
 $$
 V_{\pi}=\mathbb{E}_{A\sim \pi(\cdot \vert s_t)}\big[Q_{\pi}(s_t, A) \big]=\int_{\mathcal{A}} \pi(a\vert s_t) \cdot Q_{\pi}(s_t,a) \, da
 $$
-状态价值函数描述了给定策略$\pi$现在所处的状态的好坏，不管采取什么状态。
+状态价值函数描述了给定策略$\pi$现在所处的状态的好坏，不管采取什么动作。
 
 **最佳状态价值函数(Optimal state-value function)** $V^*(s_t)$衡量在不同的策略函数$\pi$中当前状态$s_t$的好坏：
 $$
 V^{*}(s) = \underset{\pi}{\text{max}}V_{\pi}(s)
 $$
-注意，$V^*$和策略函数$\pi$没有关系。
+注意，$V^*$和策略函数$\pi$没有关系，选择使$V_{\pi}$最大化的策略。
 
-## Valued-based RL
+$V^*$满足贝尔曼最优方程（Bellman Optimality Equation）:
+$$
+V^*(s)=\text{max}[U_t]=\text{max}[R_t+\gamma U_{t+1}] =\underset{a}{\text{max}}\big[ R_t(s_t,a_t) + \gamma \sum_{s_{t+1}'}p(s_{t+1}' \vert s_t,a_t) V_{\pi}^*(s_{t+1}') \big]
+$$
+其中，$p(s' \vert s,a)$是状态转移函数。
 
-### DQN and TD
-DQN是经典的Value-based的
+## Valued-based Method
+为了最大化长期回报，Agent应选择当前能带来最高“即时奖励 + 未来折扣后最大期望价值”的动作。
 
-### Temporal Difference (TD) Learning
+我们可以用$Q^*$它来控制Agent的动作，而经典的Deep Q Network就是使用网络$Q(s,a ;\mathbf{w})$来近似最佳状态价值函数$Q^*$的。
+
+$$
+V^*(s)=\text{max}[U_t]=\text{max}[R_t+\gamma U_{t+1}] =\underset{a}{\text{max}}\big[ R_t(s_t,a_t) + \gamma \sum_{s_{t+1}'}p(s_{t+1}' \vert s_t,a_t) V_{\pi}^*(s_{t+1}') \big]
+$$
+
+### DQN
+DQN是通过深度模型来近似$Q^*$来实现
+
+Temporal Difference (TD) Learning
 训练DQN的方法
 
 ## Policy-based RL
