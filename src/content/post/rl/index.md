@@ -120,11 +120,11 @@ $$
 RL算法的目标是最大化未来累积回报，可以看到，如果已知最优价值函数或最优策略，都可以实现RL这一目标，因此RL算法主要分为Value-based和Policy-based的方法。
 
 ## Valued-based Method
-直接使用带参数的函数来近似估计最佳价值函数(动作-价值或状态-价值函数)称为基于价值函数的算法。深度学习时代，经典的Deep Q Network就是使用深度网络$Q(s,a ;\mathbf{w})$来估计最佳状态价值函数$Q^*(s,a)$，并用来控制Agent的动作：
+直接使用带参数的函数来近似估计最佳价值函数(动作-价值或状态-价值函数)称为基于价值函数的算法。深度学习时代，经典的Deep Q Network就是使用深度网络$Q(s,a ;\mathbf{w})$来估计动作价值函数$Q(s,a)$，并用来控制Agent的动作：
 $$
 a_t=\underset{a}{\text{argmax}}Q(s_t, a;\mathbf{w})
 $$
-每次贪心地选择最大化价值的动作，最终会实现最大化未来累积回报的目标。
+每次贪心地选择最大化价值的动作，则得到最佳动作-价值函数$Q^*(s,a)$。由此可见，Value-based的RL方法是通过选择最大化$Q(s,a)$函数的动作来实现最大化未来预期回报，可以说是**间接地**实现目标。
 
 ### DQN
 我们不对DQN的网络做过多解读，举一个简单的打马里奥的例子，游戏的动作动作是$\mathcal{A}=[\text{left}, \text{right}, \text{up}]$，网络的输入是当前的图像，输出是每个动作的价值，例如$[200, 100, 150]$，每次选择最大价值的动作。
@@ -140,11 +140,11 @@ RL是时序决策框架，以一个片段(episode)为基础，即包含终止的
 
 把上面关于$U_t$的递归方程应用在DQN中：
 $$
-\underbrace{Q(s_t,a;\mathbf{w})}_{\text{Estimate of }U_t} \approx \mathbb{E}[R_t+\gamma\cdot \underbrace{Q(S_{t+1}, A_{t+1}; \mathbf{w})]}_{\text{Estimate of }U_{t+1}} 
+\underbrace{Q(s_t,a;\mathbf{w})}_{\text{Estimate of }U_t} \approx \mathbb{E}[r_t+\gamma\cdot \underbrace{Q(S_{t+1}, A_{t+1}; \mathbf{w})]}_{\text{Estimate of }U_{t+1}} 
 $$
 把求期望括号内的部分称为TD Target:
 $$
-\underbrace{Q(s_t,a;\mathbf{w})}_{\text{Prediction}} \approx  \mathbb{E}\underbrace{[R_t+\gamma\cdot Q(S_{t+1}, A_{t+1}; \mathbf{w})]}_{\text{TD Target}}
+\underbrace{Q(s_t,a;\mathbf{w})}_{\text{Prediction}} \approx  \mathbb{E}\underbrace{[r_t+\gamma\cdot Q(S_{t+1}, A_{t+1}; \mathbf{w})]}_{\text{TD Target}}
 $$
 有了Prediction和Target，就可以构建常见的损失函数更新模型参数了，令：
 $$
@@ -162,8 +162,57 @@ $$
 \mathbf{w_{t+1}=\mathbf{w_t}-\alpha\cdot\frac{\partial L}{\partial w}\Big\vert_{w=w_t}}
 $$
 
+使用TD训练DQN的伪代码：
+1. 获得状态$S_t=s_t$，执行动作$A_t=a_t$
+2. 预测价值：$q_t=Q(s_t,a_t;\mathbf{w_t})$
+3. 求微分：$\mathbf{b_t}=\frac{\partial Q(s_t,a_t;\mathbf{w_t})}{\partial \mathbf{w_t}} \big \vert_{w=w_t}$
+4. 环境提供下一个状态$s_{t+1}$和当前的奖励$r_t$
+5. 计算TD Target：$y_t=r_t + \gamma \cdot \underset{a}{\text{max}}Q(s_{t+1}, a; \mathbf{w_t})$
+6. 使用梯度下降更新参数：$\mathbf{w_{t+1}}=\mathbf{w_t}-\alpha\cdot (q_t-y_t) \mathbf{d}_t$
 
 ## Policy-based Method
+最优策略函数是实现RL目标最大化未来累积回报的关键，前述的价值函数方法DQN，最优策略函数是通过确定性(贪心)地选取$Q(s,a)$的最大价值动作$a$来达到目标的，是间接得到的，而Policy-based方法，例如Policy Gradient，是直接建模策略函数$\pi(a\vert s)$来实现最大化未来累积回报，直接建模策略函数相当于建模状态-价值函数：
+$$
+V_{\pi}(s;\theta)=\mathbb{E}_{A}[Q_{\pi}(s_t, a)]=\sum_{a}\pi(a\vert s;\theta)\cdot Q_{\pi}(s,a)
+$$
+
+Policy-based方法的目标是最大化:$J(\theta)=\text{max} \mathbb{E}_{S}[V(S;\theta)]$，注意是最大化$V(S;\theta)$的期望，但是你会发现更新梯度使用的是$V(s;\theta)$。
+
+### Policy Gradient
+如何优化参数$\theta$? Policy gradient **ascent** !
+$$
+\theta=\theta + \beta \cdot \frac{\partial V(s;\theta)}{\partial \theta}
+$$
+其中，$\frac{\partial V(s;\theta)}{\partial \theta}$就被称为Policy Gradient。我们对Policy Gradient进一步展开(这里参考的是[Wang Shusen](https://github.com/wangshusen/DeepLearning/blob/master/Slides/13_RL_3.pdf)的简化版，当作$Q_{\pi}(s,a)$和$\theta$无关，但不影响最终的结论)：
+$$
+\begin{aligned}
+    \frac{\partial V(s;\theta)}{\partial \theta}&=\frac{\partial \sum_{a}\pi(a\vert s;\theta)\cdot Q_{\pi}(s,a)}{\partial \theta} \\
+    &=\sum_{a} \frac{\partial \pi(a\vert s;\theta)\cdot Q_{\pi}(s,a)}{\partial \theta} \\
+    &=\sum_{a} \frac{\partial \pi(a\vert s;\theta)}{\partial \theta}\cdot Q_{\pi}(s,a) \quad \text{via}\nabla f(x)=f(x)\nabla\log f(x)\\
+    &=\sum_{a}\pi(a\vert s;\theta) \frac{\partial \log \pi(a\vert s;\theta)}{\partial \theta}\cdot Q_{\pi}(s,a) \\
+    &=\mathbb{E}_{\mathcal{A}}\big[\frac{\partial\log\pi(A\vert s;\theta)}{\partial \theta}\cdot Q_{\pi}(s,A) \big]
+\end{aligned}
+$$
+
+**现在的问题是如何求这个策略梯度呢？**
+
+1. 从环境中得到状态$s_t$
+2. 从策略函数$\pi(\cdot\vert s_t;\theta)$中随机抽样出$a_t$ 
+3. 计算$q_t \approx Q_{\pi}(s_t, a_t)$ $\leftarrow$ 下文回讲如何计算$q_t$
+4. 求梯度: $\mathbb{d}_{\theta, t}=\frac{\partial \log\pi(\red{a_t}\vert s_t, \theta)}{\partial \theta} \big\vert_{\theta=\theta_t}$
+5. (近似)计算policy gradient: $\mathbf{g}(\red{a_t},\theta_t)=q_t\cdot \mathbb{d}_{\theta, t}$ $\leftarrow$这里是使用蒙特卡洛近似，只使用一次随机采样来估计policy gradient(回想一下policy gradient是期望)
+6. 更新模型参数：$\theta_{t+1}=\theta_t + \beta \cdot \mathbf{g}(\red{a_t},\theta_t)$
+
+**使用蒙特卡洛近似的方法对policy gradient是无偏估计，但是它的缺点是方差高。**
+
+还有一个问题：**如何求$Q_{\pi}(s_t, a_t)$**？使用REINFORCE方法:
+
+- 玩一轮直到结束，收集轨迹：$s_1, a_1, r_1, s_2, a_2, r_2, \cdots, s_T, a_T, r_T$
+- 计算$u_t=\sum_{k=t}^{T}\gamma^{k-t}r_k$
+- 因为$Q_{\pi}(s_t,a_t)=\mathbb{E}[U_t]$，我们使用$u_t$来近似$Q_{\pi}(s_t,a_t)$
+
+
+另外一个方法是使用一个网络来近似$Q_{\pi}(s_t, a_t)$，这个就属于actor-critic方法了，在后面小节进行。
 
 ### TRPO
 
