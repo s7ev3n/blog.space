@@ -9,10 +9,12 @@ draft: false
 > 重新拾起Reinforcement Learning的基础概念和算法。
 
 ## Terminology
-强化学习中有很多的术语和概念，初学经常被搞得很懵逼，所以先从术语开始，把基础的概念理解好。
+强化学习中有很多的术语和概念，初学经常被搞得很懵逼，所以先从术语开始，把基础的概念理解好。RL的框架图如下图所示。
 概念或公式公式中符号：大写字母$X$表示随机变量，小写字母$x$表示随机变量的观测值，大写的$P$概率密度函数，花体字母$\mathcal{S}$表示集合。
 
 > 强化学习框架中充满了随机性，有很多概念是一个概率密度函数，因此经常会见到求某个概率密度函数的期望，或采样方法，例如MC采样。
+
+![rl_framework](./figs/rl.png)
 
 ### Basics
 **Agent:**
@@ -93,7 +95,9 @@ $$
 #### Optimal Value Functions
 **最佳动作价值函数(Optimal action-value function)：** $Q^*(s, a)$表示在不同的策略函数$\pi$和状态$s$下采取动作$a$的最大预期回报： 
 $$
-Q^*(s, a)=\underset{\pi}{\text{max}}Q_{\pi}(s,a)
+\begin{aligned}
+    Q^*(s, a) &= \underset{\pi}{\text{max}}Q_{\pi}(s,a)
+\end{aligned}
 $$
 注意，$Q^*$和策略函数$\pi$没有关系，选择使$Q_{\pi}(s,a)$最大化的策略。
 
@@ -120,12 +124,44 @@ RL算法的目标是最大化未来累积回报，可以看到，如果已知最
 $$
 a_t=\underset{a}{\text{argmax}}Q(s_t, a;\mathbf{w})
 $$
+每次贪心地选择最大化价值的动作，最终会实现最大化未来累积回报的目标。
 
 ### DQN
 我们不对DQN的网络做过多解读，举一个简单的打马里奥的例子，游戏的动作动作是$\mathcal{A}=[\text{left}, \text{right}, \text{up}]$，网络的输入是当前的图像，输出是每个动作的价值，例如$[200, 100, 150]$，每次选择最大价值的动作。
 
 ### Temporal Difference (TD) Learning
-如何训练DQN呢？
+**如何训练DQN呢？** 答案是一般使用TD Learning进行训练。
+
+RL是时序决策框架，以一个片段(episode)为基础，即包含终止的状态。在某时刻$t$，使用$Q(s_t, a;\mathbf{w})$来估计不同动作的未来预期回报，但是什么时候才会得到未来预期回报的真值(GroundTruth)呢？那显然得得等到这个片段结束才会知道真值，使用梯度下降来更新模型参数，这样效率就会比较低下。
+
+能不能在片段没有结束之前进行更新模型参数呢？可以，因为经过了某些步数之后，获得了这部分奖励的真值，可以使用这部分的真值来更新最初的预测，即每一步都修正之前的预测，每一步都更新模型的参数。
+
+回报$U_t$包含一定的递归属性：$U_t=R_t + \gamma R_{t+1} + \gamma^2 R_{t+2} + \gamma^3 R_{t+3} + \cdots=R_t + \gamma U_{t+1}$。
+
+把上面关于$U_t$的递归方程应用在DQN中：
+$$
+\underbrace{Q(s_t,a;\mathbf{w})}_{\text{Estimate of }U_t} \approx \mathbb{E}[R_t+\gamma\cdot \underbrace{Q(S_{t+1}, A_{t+1}; \mathbf{w})]}_{\text{Estimate of }U_{t+1}} 
+$$
+把求期望括号内的部分称为TD Target:
+$$
+\underbrace{Q(s_t,a;\mathbf{w})}_{\text{Prediction}} \approx  \mathbb{E}\underbrace{[R_t+\gamma\cdot Q(S_{t+1}, A_{t+1}; \mathbf{w})]}_{\text{TD Target}}
+$$
+有了Prediction和Target，就可以构建常见的损失函数更新模型参数了，令：
+$$
+\begin{aligned}
+    y_t &= r_t + \gamma \cdot Q(s_{t+1},a_{t+1};\mathbf{w_t}) \\
+        &= r_t + \gamma \cdot \underset{a}{\text{max}}Q(s_{t+1}, a; \mathbf{w_t})
+\end{aligned}
+$$
+损失函数即为：
+$$
+L = \frac{1}{2}[Q(s_{t},a_{t};\mathbf{w_t})-y_t]^2
+$$
+梯度更新参数：
+$$
+\mathbf{w_{t+1}=\mathbf{w_t}-\alpha\cdot\frac{\partial L}{\partial w}\Big\vert_{w=w_t}}
+$$
+
 
 ## Policy-based Method
 
