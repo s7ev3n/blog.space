@@ -220,6 +220,7 @@ $$
 - 使用当前的策略函数$\pi$执行直到结束，收集轨迹：$s_1, a_1, r_1, s_2, a_2, r_2, \cdots, s_T, a_T, r_T$
 - 计算$u_t=\sum_{k=t}^{T}\gamma^{k-t}r_k$
 - 因为$Q_{\pi}(s_t,a_t)=\mathbb{E}[U_t]$，我们使用$u_t$来近似$Q_{\pi}(s_t,a_t)$
+
 REINFORCE还有一个<strong style="color: red;">样本效率低</strong>的问题：执行当前策略$\pi_{old}$收集到的轨迹后，更新参数得到了策略函数$\pi_{new}$，这时之前收集到的轨迹就完全没有办法使用了。REINFORCE属于严格的on-policy算法。
 
 另外一个方法是使用一个网络来近似$Q_{\pi}(s_t, a_t)$，这个就属于actor-critic方法了，在后面小节进行。
@@ -247,7 +248,7 @@ $$
     =& \mathbb{E}_{\mathcal{A}}[\nabla_{\theta} \log\pi(A\vert s;\theta)\cdot(Q_{\pi}(s,A)-\blue{b})]
 \end{aligned}
 $$
-其中，$A(s,a)={\pi}(s,a)-\blue{b}$又称为Advantage函数。
+其中，$A(s,a)=Q_{\pi}(s,a)-\blue{b}$又称为Advantage函数。
 
 但是为什么要加呢？虽然不改变期望值，但是在使用蒙特卡洛近似(随机采样$a_t$并计算$g_t$)时，选择合适的baseline，可以降低方差。baseline的选择有很多，$b$可以为常数，更常见的选择是$b=V(s)$，即$A(s,a)={\pi}(s,a)-\blue{b}=\pi(s,a)-V_{\pi}(s)$。
 直观的解释Advantange函数的话就是：
@@ -265,17 +266,18 @@ TODO: 推导V(s)降低方差
 :::
 
 ### TRPO
-TRPO全称是Trust Region Policy Optimization，是优化策略函数的方法，将数值优化领域的Trust Region优化巧妙应用到策略函数的优化。首先理解Trust Region的基础，可以更好的理解TRPO。这里推荐Wang Shusen老师的视频[TRPO 置信域策略优化](https://www.youtube.com/watch?v=fcSYiyvPjm4)，非常清晰。
-Policy Gradient使用随机梯度上升进行参数优化，它的目标是$\theta^*=\underset{\theta}{\text{argmax}} \, J(\theta)$，在策略梯度的语境下，设$J(\theta)=\mathbb{E}_{S}[V(S;\theta)]$，随机梯度上升重复如下直至收敛：
+TRPO全称是Trust Region Policy Optimization，是优化策略函数的方法，将数值优化领域的Trust Region优化巧妙应用到策略函数的优化。
+
+首先回忆一下Policy Gradient使用随机梯度上升进行参数优化，它的目标是$\theta^*=\underset{\theta}{\text{argmax}} \, J(\theta)$，在策略梯度的语境下，设$J(\theta)=\mathbb{E}_{S}[V(S;\theta)]$，随机梯度上升重复如下直至收敛：
 
 1. 随机采样得到状态$s$
-2. 计算梯度$\mathbf{g}=\frac{\partial V(s;\theta)}{\partial \theta} \big\vert_{\theta=\theta_{old}}$ $\leftarrow$ 这里注意这个$\text{old}$是当前模型参数的意思，并不是类似off-policy的模型旧参数，称之为$\text{cur}$更贴切，但是很多的教材当中使用的都是$\text{old}$
+2. 计算梯度$\mathbf{g}=\frac{\partial V(s;\theta)}{\partial \theta} \big\vert_{\theta=\theta_{old}}$ $\leftarrow$ <strong style="color: red;">这里注意这个$\text{old}$是当前模型参数的意思，并不是类似off-policy的模型旧参数</strong>，称之为$\text{cur}$更贴切，但是很多的教材当中使用的都是$\text{old}$
 3. 执行梯度上升：$\theta_{\text{new}} \leftarrow \theta_{\text{old}} + \alpha\cdot \mathbf{g}$
 
 #### Trust Region
-单独拿出来Trust Region是因为这不是TRPO的发明，而是数值优化领域的算法，先来看一下它。
+单独拿出来Trust Region是因为这不是TRPO的发明，而是数值优化领域的算法，首先理解Trust Region的基础，可以更好的理解TRPO。这里推荐Wang Shusen老师的视频[TRPO 置信域策略优化](https://www.youtube.com/watch?v=fcSYiyvPjm4)，非常清晰。
 
-假设$\mathcal{N}(\theta_{\text{old}})$是参数$\theta_{\text{old}}$的邻域，即这个邻域内的参数距离$\theta_{\text{old}}$在一定的距离之内。
+假设$\mathcal{N}(\theta_{\text{old}})$是参数$\theta_{\text{old}}$的邻域，即这个邻域内的参数距离$\theta_{\text{old}}$在一定的距离之内，度量距离有多种选择，例如KL散度。
 **如果我们有一个函数，$L(\theta \vert \theta_{\text{old}})$在$\mathcal{N}(\theta_{\text{old}})$内近似$J(\theta)$，那么称$\mathcal{N}(\theta_{\text{old}})$为Trust Region。**
 
 Trust Region算法重复两件事情：
@@ -284,7 +286,7 @@ Trust Region算法重复两件事情：
 2. **Maximization**: 在Trust Region，更新参数$\theta_{\text{new}}$: $\theta_{\text{new}} \leftarrow \underset{\theta \in \mathcal{N}(\theta_{\text{old}})}{\text{argmax}}\,L(\theta\vert \theta_{\text{old}})$
 
 #### TR Policy Optimization
-首先，定义目标函数$J_{\theta}$:
+首先，定义目标函数$J_{\theta}$，其中的技巧是重要性采样:
 $$
 \begin{aligned}
     J(\theta) &= \mathbb{E}_{S}[V_{\pi}(S)] \\
@@ -294,10 +296,7 @@ $$
     &= \mathbb{E}_{S,A}\big[\frac{\pi(A\vert S;\theta)}{\pi(A\vert S;\theta_{\text{old}})} \cdot Q_{\pi}(S,A) \big]
 \end{aligned}
 $$
-下面开始应用Trust Region的两步(Approximation和Maximization)来优化目标函数：
-
-
-#### Trust Region
+上式在教材中是使用Advantage函数来替代$Q$函数的，公式推导和理解上差异不大，这里与Wang Shushen老师的课程中的公式一致。
 
 :::tip
 **重要性采样(Importance Sampling)**
@@ -307,8 +306,30 @@ $$
 \mathbb{E}_{x \sim p}[f(x)] = \mathbb{E}_{\mathbb{x \sim q}} \big[ \frac{p(x)}{q(x)}\cdot f(x) \big]
 $$
 :::
+
+下面开始应用Trust Region的两步(Approximation和Maximization)来优化目标函数：
+
+**Step 1. Approximation**: 在参数$\theta_{\text{old}}$的邻域内构建$L(\theta\vert \theta_{\text{old}})$近似$J(\theta)=\mathbb{E}_{S,A}\big[\frac{\pi(A\vert S;\theta)}{\pi(A\vert S;\theta_{\text{old}})} \cdot Q_{\pi}(S,A) \big]$
+
+由于$S$和$A$都是状态和动作的随机变量，可以从状态转移函数和$\pi$函数中随机采样得到，使用$\pi(A\vert s;\theta_{\text{old}})$和概率转移函数得到一组轨迹：$s_1,a_1,r_1,s_2,a_2,r_2,\cdots,s_n,a_n,r_n$，使用这组轨迹（蒙特卡洛）近似$J(\theta)$:
+$$
+J(\theta)\approx L(\theta\vert\theta_{old})=\frac{1}{n}\sum_{i=1}^{n}\frac{\pi(a_i\vert s_i;\theta)}{\pi(a_i\vert s_i;\theta_{old})}\cdot Q_{\pi}(s_i,a_i)
+$$
+上式中，$Q_{\pi}(s_i,a_i)$可以使用REINFORCE方法用roll out的轨迹进行估计，即$u_i$，则：
+$$
+\tilde{L}(\theta\vert\theta_{old})=\frac{1}{n}\sum_{i=1}^{n}\frac{\pi(a_i\vert s_i;\theta)}{\pi(a_i\vert s_i;\theta_{old})}\cdot u_i
+$$
+
+**Step 2. Maximization**: 在Trust Region，更新参数$\theta_{\text{new}}$:
+$$
+\theta_{\text{new}} \leftarrow \underset{\theta \in \mathcal{N}(\theta_{\text{old}})}{\text{argmax}}\,\tilde{L}(\theta\vert \theta_{\text{old}}); \quad \text{s.t.} \theta\in \mathcal{N}(\theta_{\text{old}})
+$$
+这是一个带约束的优化问题，求解这个问题比较复杂，可以简单理解一个二阶优化问题，即使用到了Hessian矩阵。因此，后续PPO对此进行了改进。
+
 ### PPO
-近端策略优化算法是对TRPO算法的改进，TRPO有训练稳定的优点，但是使用二阶计算量较大。
+近端策略优化算法是对TRPO算法的改进，TRPO有训练稳定的优点，但是使用二阶计算量较大。PPO的改进可以使用一阶优化算法。
+
+
 
 ## Actor-Critic Method
 Actor-Critic Method是Value-based和Policy-based的结合，经典的算法有DDPG, A3C等等。
