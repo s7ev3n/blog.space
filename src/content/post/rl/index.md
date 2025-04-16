@@ -220,7 +220,6 @@ $$
 - 使用当前的策略函数$\pi$执行直到结束，收集轨迹：$s_1, a_1, r_1, s_2, a_2, r_2, \cdots, s_T, a_T, r_T$
 - 计算$u_t=\sum_{k=t}^{T}\gamma^{k-t}r_k$
 - 因为$Q_{\pi}(s_t,a_t)=\mathbb{E}[U_t]$，我们使用$u_t$来近似$Q_{\pi}(s_t,a_t)$
-
 REINFORCE还有一个<strong style="color: red;">样本效率低</strong>的问题：执行当前策略$\pi_{old}$收集到的轨迹后，更新参数得到了策略函数$\pi_{new}$，这时之前收集到的轨迹就完全没有办法使用了。REINFORCE属于严格的on-policy算法。
 
 另外一个方法是使用一个网络来近似$Q_{\pi}(s_t, a_t)$，这个就属于actor-critic方法了，在后面小节进行。
@@ -266,6 +265,7 @@ TODO: 推导V(s)降低方差
 :::
 
 ### TRPO
+TRPO全称是Trust Region Policy Optimization，是优化策略函数的方法，将数值优化领域的Trust Region优化巧妙应用到策略函数的优化。首先理解Trust Region的基础，可以更好的理解TRPO。这里推荐Wang Shusen老师的视频[TRPO 置信域策略优化](https://www.youtube.com/watch?v=fcSYiyvPjm4)，非常清晰。
 Policy Gradient使用随机梯度上升进行参数优化，它的目标是$\theta^*=\underset{\theta}{\text{argmax}} \, J(\theta)$，在策略梯度的语境下，设$J(\theta)=\mathbb{E}_{S}[V(S;\theta)]$，随机梯度上升重复如下直至收敛：
 
 1. 随机采样得到状态$s$
@@ -297,8 +297,7 @@ $$
 下面开始应用Trust Region的两步(Approximation和Maximization)来优化目标函数：
 
 
-### PPO
-了解PPO需要几个背景知识：Importance Sampling, 
+#### Trust Region
 
 :::tip
 **重要性采样(Importance Sampling)**
@@ -308,6 +307,8 @@ $$
 \mathbb{E}_{x \sim p}[f(x)] = \mathbb{E}_{\mathbb{x \sim q}} \big[ \frac{p(x)}{q(x)}\cdot f(x) \big]
 $$
 :::
+### PPO
+近端策略优化算法是对TRPO算法的改进，TRPO有训练稳定的优点，但是使用二阶计算量较大。
 
 ## Actor-Critic Method
 Actor-Critic Method是Value-based和Policy-based的结合，经典的算法有DDPG, A3C等等。
