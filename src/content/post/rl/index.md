@@ -130,9 +130,9 @@ $$
 我们不对DQN的网络做过多解读，举一个简单的打马里奥的例子，游戏的动作动作是$\mathcal{A}=[\text{left}, \text{right}, \text{up}]$，网络的输入是当前的图像，输出是每个动作的价值，例如$[200, 100, 150]$，每次选择最大价值的动作。
 
 ### Temporal Difference (TD) Learning
-**如何训练DQN呢？** 答案是一般使用TD Learning进行训练。
+**如何训练DQN呢？** 一般使用TD Learning进行训练。
 
-RL是时序决策框架，以一个片段(episode)为基础，即包含终止的状态。在某时刻$t$，使用$Q(s_t, a;\mathbf{w})$来估计不同动作的未来预期回报，但是什么时候才会得到未来预期回报的真值(GroundTruth)呢？那显然得得等到这个片段结束才会知道真值，使用梯度下降来更新模型参数，这样效率就会比较低下。
+RL是时序决策框架，通常以一个片段(episode)为基础，即一定会包含终止的状态。在某时刻$t$，使用$Q(s_t, a;\mathbf{w})$来估计不同动作的未来预期回报，但是什么时候才会得到未来预期回报的真值(GroundTruth)呢？那显然得得等到这个片段结束才会知道真值，使用梯度下降来更新模型参数，这样效率就会比较低下。
 
 能不能在片段没有结束之前进行更新模型参数呢？可以，因为经过了某些步数之后，获得了这部分奖励的真值，可以使用这部分的真值来更新最初的预测，即每一步都修正之前的预测，每一步都更新模型的参数。
 
@@ -176,8 +176,17 @@ $$
 V_{\pi}(s;\theta)=\mathbb{E}_{A}[Q_{\pi}(s_t, a)]=\sum_{a}\pi(a\vert s;\theta)\cdot Q_{\pi}(s,a)
 $$
 
-Policy-based方法的目标是最大化:$J(\theta)=\text{max} \mathbb{E}_{S}[V(S;\theta)]$，注意是最大化$V(S;\theta)$的期望，但是你会发现更新梯度使用的是$V(s;\theta)$。
+TODO:？
+Policy-based方法的目标是:
+$$
+J(\theta)=\text{max} \mathbb{E}_{S}[V(S;\theta)]
+$$
+注意是最大化$V(S;\theta)$的期望，但是你会发现更新梯度使用的是$V(s;\theta)$。
 
+$J(\theta)$的导数：
+$$
+\nabla_{\theta}J(\theta) = \nabla_{\theta}\mathbb{E}_{S}[V(s;\theta)]=\mathbb{E}_{S}[\nabla_{\theta}V(s;\theta)]
+$$
 ### Policy Gradient
 如何优化参数$\theta$? Policy gradient **ascent** !
 $$
@@ -190,7 +199,8 @@ $$
     &=\sum_{a} \frac{\partial \pi(a\vert s;\theta)\cdot Q_{\pi}(s,a)}{\partial \theta} \\
     &=\sum_{a} \frac{\partial \pi(a\vert s;\theta)}{\partial \theta}\cdot Q_{\pi}(s,a) \quad \text{via}\nabla f(x)=f(x)\nabla\log f(x)\\
     &=\sum_{a}\pi(a\vert s;\theta) \frac{\partial \log \pi(a\vert s;\theta)}{\partial \theta}\cdot Q_{\pi}(s,a) \\
-    &=\mathbb{E}_{\mathcal{A}}\big[\frac{\partial\log\pi(A\vert s;\theta)}{\partial \theta}\cdot Q_{\pi}(s,A) \big]
+    &=\mathbb{E}_{\mathcal{A}}\big[\frac{\partial\log\pi(A\vert s;\theta)}{\partial \theta}\cdot Q_{\pi}(s,A) \big] \\
+    &=\mathbb{E}_{\mathcal{A}}[\nabla_{\theta} \log\pi(A\vert s;\theta)\cdot Q_{\pi}(s,A)]
 \end{aligned}
 $$
 
@@ -207,14 +217,85 @@ $$
 
 还有一个问题：**如何求$Q_{\pi}(s_t, a_t)$**？使用REINFORCE方法:
 
-- 玩一轮直到结束，收集轨迹：$s_1, a_1, r_1, s_2, a_2, r_2, \cdots, s_T, a_T, r_T$
+- 使用当前的策略函数$\pi$执行直到结束，收集轨迹：$s_1, a_1, r_1, s_2, a_2, r_2, \cdots, s_T, a_T, r_T$
 - 计算$u_t=\sum_{k=t}^{T}\gamma^{k-t}r_k$
 - 因为$Q_{\pi}(s_t,a_t)=\mathbb{E}[U_t]$，我们使用$u_t$来近似$Q_{\pi}(s_t,a_t)$
 
+REINFORCE还有一个<strong style="color: red;">样本效率低</strong>的问题：执行当前策略$\pi_{old}$收集到的轨迹后，更新参数得到了策略函数$\pi_{new}$，这时之前收集到的轨迹就完全没有办法使用了。REINFORCE属于严格的on-policy算法。
 
 另外一个方法是使用一个网络来近似$Q_{\pi}(s_t, a_t)$，这个就属于actor-critic方法了，在后面小节进行。
 
+### Policy Gradient with Baseline 
+前述使用MC采样的Policy Gradient算法的问题是方差较高，学者引入Baseline技巧，可以实现降低方差的作用。
+
+首先来看一个推导：
+$$
+\begin{aligned}
+    \quad &\mathbb{E}_{A\sim \pi}[\blue{b}\cdot \nabla_{\theta} \log\pi(A\vert s;\theta)] \\
+    =& \blue{b} \cdot \mathbb{E}_{A\sim \pi}[\nabla_{\theta} \log\pi(A\vert s;\theta)] \\
+    =& \blue{b} \cdot \sum_{a}\pi(a\vert s;\theta) [\frac{\partial \log \pi(a\vert s;\theta)}{\partial \theta}] \quad \text{via }\frac{d}{dx} \log(f(x)) = \frac{1}{x}f'(x)\\
+    =& \blue{b} \cdot \sum_{a} \cancel{\pi(a\vert s;\theta)}[\frac{1}{\cancel{\pi(a\vert s;\theta)}}\cdot \frac{\partial \pi(a\vert s;\theta)}{\partial \theta}] \\
+    =& \blue{b} \cdot \frac{\partial\sum_{a}\pi(a\vert s;\theta)}{\partial \theta} \\
+    =& \blue{b} \cdot \frac{\partial 1}{\partial \theta} \\
+    =& 0
+\end{aligned}
+$$
+$b$就是baseline，只要$b$和求导的参数$\theta$以及动作$a$无关，它的期望就是$0$，所以把上式添加到Policy Gradient中，不改变Policy Gradient的期望值：
+$$
+\begin{aligned}
+    PG =& \mathbb{E}_{\mathcal{A}}\big[\nabla_{\theta} \log\pi(A\vert s;\theta) \cdot Q_{\pi}(s,A) \big] \\
+    =& \mathbb{E}_{\mathcal{A}}\big[\nabla_{\theta} \log\pi(A\vert s;\theta) \cdot Q_{\pi}(s,A) - \nabla_{\theta} \log\pi(A\vert s;\theta)\cdot\blue{b}\big] \\
+    =& \mathbb{E}_{\mathcal{A}}[\nabla_{\theta} \log\pi(A\vert s;\theta)\cdot(Q_{\pi}(s,A)-\blue{b})]
+\end{aligned}
+$$
+其中，$A(s,a)={\pi}(s,a)-\blue{b}$又称为Advantage函数。
+
+但是为什么要加呢？虽然不改变期望值，但是在使用蒙特卡洛近似(随机采样$a_t$并计算$g_t$)时，选择合适的baseline，可以降低方差。baseline的选择有很多，$b$可以为常数，更常见的选择是$b=V(s)$，即$A(s,a)={\pi}(s,a)-\blue{b}=\pi(s,a)-V_{\pi}(s)$。
+直观的解释Advantange函数的话就是：
+- $A(s,a) > 0$，则表示当前动作$a$的回报优于平均值
+- $A(s,a) < 0$，则表示当前动作$a$的回报低于平均值
+
+TODO：如何在算法中估计baseline$V_{\pi}$呢？
+
+:::note
+**为什么会选择$V(s)$作为baseline呢？**
+
+首先，选择baseine的目标是降低方差$Var(Q(s,a)-b)$。
+
+TODO: 推导V(s)降低方差
+:::
+
 ### TRPO
+Policy Gradient使用随机梯度上升进行参数优化，它的目标是$\theta^*=\underset{\theta}{\text{argmax}} \, J(\theta)$，在策略梯度的语境下，设$J(\theta)=\mathbb{E}_{S}[V(S;\theta)]$，随机梯度上升重复如下直至收敛：
+
+1. 随机采样得到状态$s$
+2. 计算梯度$\mathbf{g}=\frac{\partial V(s;\theta)}{\partial \theta} \big\vert_{\theta=\theta_{old}}$ $\leftarrow$ 这里注意这个$\text{old}$是当前模型参数的意思，并不是类似off-policy的模型旧参数，称之为$\text{cur}$更贴切，但是很多的教材当中使用的都是$\text{old}$
+3. 执行梯度上升：$\theta_{\text{new}} \leftarrow \theta_{\text{old}} + \alpha\cdot \mathbf{g}$
+
+#### Trust Region
+单独拿出来Trust Region是因为这不是TRPO的发明，而是数值优化领域的算法，先来看一下它。
+
+假设$\mathcal{N}(\theta_{\text{old}})$是参数$\theta_{\text{old}}$的邻域，即这个邻域内的参数距离$\theta_{\text{old}}$在一定的距离之内。
+**如果我们有一个函数，$L(\theta \vert \theta_{\text{old}})$在$\mathcal{N}(\theta_{\text{old}})$内近似$J(\theta)$，那么称$\mathcal{N}(\theta_{\text{old}})$为Trust Region。**
+
+Trust Region算法重复两件事情：
+
+1. **Approximation**: 给定当前参数$\theta_{old}$，构建$L(\theta \vert \theta_{\text{old}})$，它是在邻域$\mathcal{N}(\theta_{\text{old}})$内对目标函数$J(\theta)$的近似
+2. **Maximization**: 在Trust Region，更新参数$\theta_{\text{new}}$: $\theta_{\text{new}} \leftarrow \underset{\theta \in \mathcal{N}(\theta_{\text{old}})}{\text{argmax}}\,L(\theta\vert \theta_{\text{old}})$
+
+#### TR Policy Optimization
+首先，定义目标函数$J_{\theta}$:
+$$
+\begin{aligned}
+    J(\theta) &= \mathbb{E}_{S}[V_{\pi}(S)] \\
+    &= \mathbb{E}_{S}\big[\sum_{a}\pi(a\vert s;\theta)\cdot Q_{\pi}(s,a)] \\
+    &= \mathbb{E}_{S}\big[\pi(a\vert s;\theta_{\text{old}}) \cdot \frac{\pi(a\vert s;\theta)}{\pi(a\vert s;\theta_{\text{old}})} \cdot Q_{\pi}(s,a) \big] \\
+    &= \mathbb{E}_{S}\Big[\mathbb{E}_{A \sim \pi(\cdot\vert s;\theta_{\text{old}})}\big[\frac{\pi(a\vert s;\theta)}{\pi(a\vert s;\theta_{\text{old}})} \cdot Q_{\pi}(s,a) \big]\Big] \\
+    &= \mathbb{E}_{S,A}\big[\frac{\pi(A\vert S;\theta)}{\pi(A\vert S;\theta_{\text{old}})} \cdot Q_{\pi}(S,A) \big]
+\end{aligned}
+$$
+下面开始应用Trust Region的两步(Approximation和Maximization)来优化目标函数：
+
 
 ### PPO
 了解PPO需要几个背景知识：Importance Sampling, 
@@ -224,7 +305,7 @@ $$
 
 Importance Sampling是一种估计目标分布期望的技巧。当无法直接从目标分布$p(x)$时，通过另一个提议分布$q(x)$生成样本，并使用权重$\frac{p(x)}{q(x)}$修正期望值：
 $$
-\mathbb{E}_{x \sim p}[f(x)] = \mathbb{x \sim q} \big[f(x) \frac{p(x)}{q(x)} \big]
+\mathbb{E}_{x \sim p}[f(x)] = \mathbb{E}_{\mathbb{x \sim q}} \big[ \frac{p(x)}{q(x)}\cdot f(x) \big]
 $$
 :::
 
