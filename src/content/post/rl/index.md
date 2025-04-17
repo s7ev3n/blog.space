@@ -3,7 +3,7 @@ title: "RL 101"
 description: "reinforcement learning basics"
 publishDate: "3 April 2025"
 tags: ["tech/rl"]
-draft: false
+draft: true
 ---
 
 > 重新拾起Reinforcement Learning的基础概念和算法。
@@ -298,6 +298,8 @@ $$
 $$
 上式在教材中是使用Advantage函数来替代$Q$函数的，公式推导和理解上差异不大，这里与Wang Shushen老师的课程中的公式一致。
 
+在做重要性采样时，如果提议分布和目标分布差异过大，是没有办法进行优化的，因此我们假设的也是当前策略函数的分布$\theta_{\text{old}}$和将要优化的策略函数的分布非常的近似，因此在Trust Region小步更新，更新步长太大也会造成优化不稳定。
+
 :::tip
 **重要性采样(Importance Sampling)**
 
@@ -327,17 +329,7 @@ $$
 这是一个带约束的优化问题，求解这个问题比较复杂，可以简单理解一个二阶优化问题，即使用到了Hessian矩阵。因此，后续PPO对此进行了改进。
 
 ### PPO
-近端策略优化算法是对TRPO算法的改进，TRPO有训练稳定的优点，但是使用二阶计算量较大。PPO的改进可以使用一阶优化算法。
-
-
-
-## Actor-Critic Method
-Actor-Critic Method是Value-based和Policy-based的结合，经典的算法有DDPG, A3C等等。
-
-
-### PPO
-给TRPO增加一点，即为什么有个$\theta_{\text{old}}$。因为在做重要性采样时，如果提议分布和目标分布差异过大，是没有办法进行优化的，因此我们假设的也是当前策略函数的分布$\theta_{\text{old}}$和将要优化的策略函数的分布非常的近似，也使用Trust Region小步骤更新，更新步长太大也会造成优化不稳定。
-
+近端策略优化算法是对TRPO算法的改进，TRPO有训练稳定的优点，但是使用二阶计算量较大。
 PPO是对TRPO的改进，主要是对比较复杂的带约束的最优化问题进行了简化，可以使用一阶的优化算法进行，大大加快了效率。
 
 我们回顾一下TRPO的带约束的优化问题：
@@ -377,3 +369,6 @@ $$
 - $L^{VF}=(V_{\theta}(s)-V^{target})^2$，$V^{target}$可以通过广义优势估计(General Advantage Estimation, GAE)得到。
 
 - $S[\pi_{\theta}(s)]=\mathbb{E}[-\pi_{\theta}(a\vert s)\log \pi_{\theta}(a\vert s)]$，这一公式是从熵的定义中来，熵越大表明信息量越大，目标函数鼓励这一项更大（因为使用的是$+$号），可以估计模型增加探索，因为$\pi$函数控制动作。
+
+## Actor-Critic Method
+Actor-Critic Method是Value-based和Policy-based的结合，经典的算法有DDPG, A3C等等。
