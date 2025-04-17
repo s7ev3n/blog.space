@@ -3,7 +3,7 @@ title: "RL 101"
 description: "reinforcement learning basics"
 publishDate: "3 April 2025"
 tags: ["tech/rl"]
-draft: true
+draft: false
 ---
 
 > 重新拾起Reinforcement Learning的基础概念和算法。
