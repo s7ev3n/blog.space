@@ -311,3 +311,47 @@ $$
 
 ## Actor-Critic Method
 Actor-Critic Method是Value-based和Policy-based的结合，经典的算法有DDPG, A3C等等。
+
+
+### PPO
+给TRPO增加一点，即为什么有个$\theta_{\text{old}}$。因为在做重要性采样时，如果提议分布和目标分布差异过大，是没有办法进行优化的，因此我们假设的也是当前策略函数的分布$\theta_{\text{old}}$和将要优化的策略函数的分布非常的近似，也使用Trust Region小步骤更新，更新步长太大也会造成优化不稳定。
+
+PPO是对TRPO的改进，主要是对比较复杂的带约束的最优化问题进行了简化，可以使用一阶的优化算法进行，大大加快了效率。
+
+我们回顾一下TRPO的带约束的优化问题：
+$$
+\begin{aligned}
+    &\underset{\theta}{\text{maximize}} \quad \mathbb{E}\big[\frac{\pi(a\vert s;\theta)}{\pi(a\vert s;\theta_{\text{old}})}A_{\pi_{\text{old}}}(s,a) \big] \\ 
+    &\text{s.t.} \quad \mathbb{E}[D_{KL}(\pi_{\theta_{\text{old}}}(\cdot\vert s) \parallel \pi_{\theta}(\cdot \vert s))] \leq \delta
+\end{aligned}
+$$
+
+[PPO算法](https://arxiv.org/pdf/1707.06347)有两个变体，相对TRPO来说都很简洁，它们是$\text{PPO}^{KLPEN}$和$\text{PPO}^{CLIP}$
+
+#### PPO Penaty
+$\text{PPO}^{KLPEN}$，把约束项$D_{KL}$放入到目标函数中去（有些类似拉格朗日乘子法），就变成了无约束的优化问题，这样就可以直接使用各种一阶优化算法了，例如SGD，ADAM：
+$$
+\mathbb{E}\big[\frac{\pi(a\vert s;\theta)}{\pi(a\vert s;\theta_{\text{old}})}A_{\pi_{\text{old}}}(s,a) \big] - \beta \cdot \mathbb{E}[D_{KL}(\pi_{\theta_{\text{old}}}(\cdot\vert s) \parallel \pi_{\theta}(\cdot \vert s))]
+$$
+
+其中的$\beta$是一个自适应的调整项，需要一个作为超参数的$d_{\text{target}}$，首先计算$d=\mathbb{E}[D_{KL}(\pi_{\theta_{\text{old}}}(\cdot\vert s) \parallel \pi_{\theta}(\cdot \vert s))]$:
+
+- 如果$d < d_{\text{target}} / 1.5 \rightarrow \beta=\beta / 2$ 
+- 如果$d > d_{\text{target}} \times 1.5 \rightarrow \beta=\beta \times 2$
+
+#### PPO CLIP
+$\text{PPO}^{CLIP}$对Trust Region的进行了简化，通过控制重要性采样比率控制更新的补偿。令重要性采样比率为$r(\theta)=\frac{\pi(a;\theta)}{\pi(a;\theta_{\text{old}})}$，对$r(\theta)$进行截断，并选择最小（“悲观”）的那一项：
+$$
+L^{CLIP}(\theta)=\mathbb{E}[\text{min}(r(\theta)A_{\pi_{\text{old}}}(s,a), \text{clip}(r(\theta), 1-\epsilon, 1+\epsilon))A_{\pi_{\text{old}}}(s,a)]
+$$
+$\text{PPO}^{CLIP}$是更常见的目标函数，论文的实验中也有更好的表现。
+
+PPO论文作者在第5节中提到，很多方法会使用一个网络来估计advantage函数中的$V_{\pi}(s)$，如果policy网络和value网络共享参数，需要增加价值函数项$L^{VF}$和熵奖励项(Entropy Bonus)$S$，写作：
+$$
+L^{CLIP+VF+S}=\mathbb{E}[L^{CLIP}(\theta)-c_1L^{VF}(\theta)+c_2S[\pi_{\theta}(s)]]
+$$
+其中的$c_1, c_2$都是超参数，其他两项：
+
+- $L^{VF}=(V_{\theta}(s)-V^{target})^2$，$V^{target}$可以通过广义优势估计(General Advantage Estimation, GAE)得到。
+
+- $S[\pi_{\theta}(s)]=\mathbb{E}[-\pi_{\theta}(a\vert s)\log \pi_{\theta}(a\vert s)]$，这一公式是从熵的定义中来，熵越大表明信息量越大，目标函数鼓励这一项更大（因为使用的是$+$号），可以估计模型增加探索，因为$\pi$函数控制动作。
