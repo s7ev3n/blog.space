@@ -274,17 +274,11 @@ $$
 ### TRPO
 TRPO全称是Trust Region Policy Optimization，是优化策略函数的方法，将数值优化领域的Trust Region优化巧妙应用到策略函数的优化。
 
-首先回忆一下Policy Gradient使用随机梯度上升进行参数优化，它的目标是$\theta^*=\underset{\theta}{\text{argmax}} \, \mathcal{J}(\theta)$：
-
-1. 随机采样得到状态$s$
-2. 计算梯度$\mathbf{g}=\frac{\partial \mathcal{J}(\theta)}{\partial \theta} \big\vert_{\theta=\theta_{old}}$ $\leftarrow$ <strong style="color: red;">这里注意这个$\text{old}$是当前模型参数的意思，并不是类似off-policy的模型旧参数</strong>，称之为$\text{cur}$更贴切，但是很多的教材当中使用的都是$\text{old}$
-3. 执行梯度上升：$\theta_{\text{new}} \leftarrow \theta_{\text{old}} + \alpha\cdot \mathbf{g}$
-
 #### Trust Region
 单独拿出来Trust Region是因为这不是TRPO的发明，而是数值优化领域的算法，首先理解Trust Region的基础，可以更好的理解TRPO。这里推荐Wang Shusen老师的视频[TRPO 置信域策略优化](https://www.youtube.com/watch?v=fcSYiyvPjm4)，非常清晰。
 
 假设$\mathcal{N}(\theta_{\text{old}})$是参数$\theta_{\text{old}}$的邻域，即这个邻域内的参数距离$\theta_{\text{old}}$在一定的距离之内，度量距离有多种选择，例如KL散度。
-**如果我们有一个函数，$L(\theta \vert \theta_{\text{old}})$在$\mathcal{N}(\theta_{\text{old}})$内近似$J(\theta)$，那么称$\mathcal{N}(\theta_{\text{old}})$为Trust Region。**
+**如果我们有一个函数，$L(\theta \vert \theta_{\text{old}})$在$\mathcal{N}(\theta_{\text{old}})$内近似$\mathcal{J}(\theta)$，那么称$\mathcal{N}(\theta_{\text{old}})$为Trust Region。**
 
 Trust Region算法重复两件事情：
 
@@ -304,6 +298,24 @@ $$
 $$
 上式在教材中是使用Advantage函数来替代$Q$函数的，公式推导和理解上差异不大，这里与Wang Shushen老师的课程中的公式一致。
 
+:::note
+$\theta_{\text{old}}$是什么？
+
+理解$\theta_{\text{old}}$需要理解策略梯度的训练过程：
+1. Rollout（数据收集）：由于TRPO的on-policy特性，每次更新梯度，需要使用当前参数($\theta_{\text{old}}$)的策略与环境交互，得到轨迹数据，这些数据用于使用梯度上升进行参数更新；为了加快rollout，gym环境使用Vectorized Environments并行化的模拟
+2. 使用Rollout得到的数据作为训练数据训练policy，因此公式中的$\theta$就是当前的正要更新的模型参数，因为要支持多轮的梯度更新，使用的都是同一批使用$\theta_{\text{old}}$得到的轨迹数据，这里应该可以更好的理解为什么写为$\theta_{\text{old}}$：
+```python
+rollout_data = agent.policy_rollout()
+for epoch in range(update_epochs):
+    obs_old, actions_old, logprobs_old = sample_rollout_actions(rollout_data)
+    new_action, new_value = \
+        agent.get_action_value(obs_old, actions_old)
+    logratio = logprobs_new - logprobs_old
+    ratio = logratio.exp() # \pi(\theta) / \pi(\theta_old)
+    # ... gradient ascent
+```
+:::
+
 在做重要性采样时，如果提议分布和目标分布差异过大，是没有办法进行优化的，因此我们假设的也是当前策略函数的分布$\theta_{\text{old}}$和将要优化的策略函数的分布非常的近似，因此在Trust Region小步更新，更新步长太大也会造成优化不稳定。
 
 :::tip
@@ -317,9 +329,10 @@ $$
 
 下面开始应用Trust Region的两步(Approximation和Maximization)来优化目标函数：
 
-**Step 1. Approximation**: 在参数$\theta_{\text{old}}$的邻域内构建$L(\theta\vert \theta_{\text{old}})$近似$J(\theta)=\mathbb{E}_{S,A}\big[\frac{\pi(A\vert S;\theta)}{\pi(A\vert S;\theta_{\text{old}})} \cdot Q_{\pi}(S,A) \big]$
+**Step 1. Approximation**: 在参数$\theta_{\text{old}}$的邻域内构建$L(\theta\vert \theta_{\text{old}})$近似$\mathcal{J}(\theta)=\mathbb{E}_{S,A}\big[\frac{\pi(A\vert S;\theta)}{\pi(A\vert S;\theta_{\text{old}})} \cdot Q_{\pi}(S,A) \big]$
 
-由于$S$和$A$都是状态和动作的随机变量，可以从状态转移函数和$\pi$函数中随机采样得到，使用$\pi(A\vert s;\theta_{\text{old}})$和概率转移函数得到一组轨迹：$s_1,a_1,r_1,s_2,a_2,r_2,\cdots,s_n,a_n,r_n$，使用这组轨迹（蒙特卡洛）近似$J(\theta)$:
+由于$S$和$A$都是状态和动作的随机变量，可以从状态转移函数和$\pi$函数中随机采样得到，使用$\pi(A\vert s;\theta_{\text{old}})$和概率转移函数得到一组轨迹：$s_1,a_1,r_1,s_2,a_2,r_2,\cdots,s_n,a_n,r_n$，这些轨迹点相当于是训练策略函数$\pi_{\theta}$的训练数据。
+使用这组轨迹（蒙特卡洛）近似$\mathcal{J}(\theta)$:
 $$
 J(\theta)\approx L(\theta\vert\theta_{old})=\frac{1}{n}\sum_{i=1}^{n}\frac{\pi(a_i\vert s_i;\theta)}{\pi(a_i\vert s_i;\theta_{old})}\cdot Q_{\pi}(s_i,a_i)
 $$
