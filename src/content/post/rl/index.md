@@ -171,31 +171,56 @@ $$
 6. 使用梯度下降更新参数：$\mathbf{w_{t+1}}=\mathbf{w_t}-\alpha\cdot (q_t-y_t) \mathbf{d}_t$
 
 ## Policy-based Method
-最优策略函数是实现RL目标最大化未来累积回报的关键，前述的价值函数方法DQN，对$Q$函数建模$Q(s,a;\mathbb{w})$,最优策略函数是通过确定性(贪心)地选取$Q(s,a;w)$的最大价值动作$a$来达到目标的，而
+前面的Value-based方法，通过学习状态/动作-价值函数，然后选择动作来最大化未来累积回报的预期。
+而Policy-based方法，例如Policy Gradient，是直接建模策略函数$\pi(a\vert s; \theta)$来实现最大化未来累积回报的预期，
+$$
+\text{maximize} \, \mathcal{J}(\theta)=V_{\pi_{\theta}}(S_1)= \mathbb{E}_{\pi_{\theta}}[V_1]
+$$
+其中，$S_1$是初始状态。
 
-Policy-based方法，例如Policy Gradient，是直接建模策略函数$\pi(a\vert s; \theta)$来实现最大化未来累积回报的预期:
+期望累积奖励可以表示为平稳分布下的期望[^1]：
 $$
-\text{maximize} \, \mathbb{E}_{\pi(a\vert s; \theta)}[U_t]
+\mathcal{J}(\theta)=\sum_{s\in \mathcal{S}}d_{\pi_{\theta}}(s)V_{\pi_{\theta}}(s)=\sum_{s\in \mathcal{S}}\big(d_{\pi_{\theta}}(s)\sum_{a\in \mathcal{A}}\pi(a\vert s,\theta)Q_{\pi}(s,a) \big)
 $$
+其中，$d_{\pi_{\theta}}(s)$称为平稳分布(stationary distribution)。
+
+[^1]: [Policy Gradient](https://lilianweng.github.io/posts/2018-02-19-rl-overview/#policy-gradient)
+
+:::note
+什么是平稳分布(Stationary Distribution) ?
+
+平稳分布是马尔可夫链（Markov Chain）中的一个核心概念，描述了一个系统在长期演化后达到的稳定状态。对于离散时间马尔可夫链（Discrete-Time Markov Chain, DTMC），若存在一个概率分布$\pi$满足：
+$$
+\pi=\pi P
+$$
+其中$P$是状态转移矩阵，则$\pi$为该马尔可夫链的平稳分布。
+
+直观理解就是：若初始状态服从分布$\pi$，则经过任意次状态转移后，状态分布仍保持为$\pi$。
+:::
+
+:::tip
+在[Wang Shusen老师](https://github.com/wangshusen/DeepLearning/blob/master/Slides/13_RL_3.pdf)的课程中，目标函数的表示有些许不同，但是是等价的。Wang Shusen老师课程中的目标函数：
+$$
+\mathcal{J}(\theta)=\mathbb{E}_{S}[V(S;\theta)]
+$$
+:::
 
 ### Policy Gradient
-如何优化参数$\theta$? Policy gradient **ascent** !
-$$
-\theta=\theta + \beta \cdot \frac{\partial V(s;\theta)}{\partial \theta}
-$$
-其中，$\frac{\partial V(s;\theta)}{\partial \theta}$就被称为Policy Gradient。我们对Policy Gradient进一步展开(这里参考的是[Wang Shusen](https://github.com/wangshusen/DeepLearning/blob/master/Slides/13_RL_3.pdf)的简化版，当作$Q_{\pi}(s,a)$和$\theta$无关，但不影响最终的结论)：
+对上面的目标函数解析的求梯度(这里参考的是[Wang Shusen](https://github.com/wangshusen/DeepLearning/blob/master/Slides/13_RL_3.pdf)的简化版：
 $$
 \begin{aligned}
-    \frac{\partial V(s;\theta)}{\partial \theta}&=\frac{\partial \sum_{a}\pi(a\vert s;\theta)\cdot Q_{\pi}(s,a)}{\partial \theta} \\
-    &=\sum_{a} \frac{\partial \pi(a\vert s;\theta)\cdot Q_{\pi}(s,a)}{\partial \theta} \\
-    &=\sum_{a} \frac{\partial \pi(a\vert s;\theta)}{\partial \theta}\cdot Q_{\pi}(s,a) \quad \text{via}\nabla f(x)=f(x)\nabla\log f(x)\\
-    &=\sum_{a}\pi(a\vert s;\theta) \frac{\partial \log \pi(a\vert s;\theta)}{\partial \theta}\cdot Q_{\pi}(s,a) \\
+    \frac{\partial \mathcal{J}(\theta)}{\partial \theta}&=\frac{\partial \sum_{s\in \mathcal{S}}d(s)\sum_{a}\pi(a\vert s;\theta)\cdot Q_{\pi}(s,a)}{\partial \theta} \\
+    &=\sum_{s\in \mathcal{S}}d(s)\sum_{a\in\mathcal{A}} \frac{\partial \pi(a\vert s;\theta)\cdot Q_{\pi}(s,a)}{\partial \theta} \\
+    &=\sum_{s\in \mathcal{S}}d(s)\sum_{a} \frac{\partial \pi(a\vert s;\theta)}{\partial \theta}\cdot Q_{\pi}(s,a) \quad \text{via}\nabla f(x)=f(x)\nabla\log f(x)\\
+    &=\sum_{s\in \mathcal{S}}d(s)\sum_{a}\pi(a\vert s;\theta) \frac{\partial \log \pi(a\vert s;\theta)}{\partial \theta}\cdot Q_{\pi}(s,a) \quad \text{via} \sum_{s\in \mathcal{S}}d(s)=1 \\
     &=\mathbb{E}_{\mathcal{A}}\big[\frac{\partial\log\pi(A\vert s;\theta)}{\partial \theta}\cdot Q_{\pi}(s,A) \big] \\
     &=\mathbb{E}_{\mathcal{A}}[\nabla_{\theta} \log\pi(A\vert s;\theta)\cdot Q_{\pi}(s,A)]
 \end{aligned}
 $$
 
-**现在的问题是如何求这个策略梯度呢？**
+$\nabla_{\theta}\mathcal{J}(\theta)$称为策略梯度(Policy gradient)，注意的是它是一个期望值，请记住这个公式。
+
+策略梯度算法使用梯度上升来更新参数(梯度下降用于最小化目标函数，对应的梯度上升用来最大化目标函数)，伪代码如下：
 
 1. 从环境中得到状态$s_t$
 2. 从策略函数$\pi(\cdot\vert s_t;\theta)$中随机抽样出$a_t$ 
@@ -206,7 +231,7 @@ $$
 
 **使用蒙特卡洛近似的方法对policy gradient是无偏估计，但是它的缺点是方差高。**
 
-还有一个问题：**如何求$Q_{\pi}(s_t, a_t)$**？使用REINFORCE方法:
+还有一个问题：**如何求$Q_{\pi}(s_t, a_t)$**？使用**REINFORCE**方法:
 
 - 使用当前的策略函数$\pi$执行直到结束，收集轨迹：$s_1, a_1, r_1, s_2, a_2, r_2, \cdots, s_T, a_T, r_T$
 - 计算$u_t=\sum_{k=t}^{T}\gamma^{k-t}r_k$
@@ -239,7 +264,7 @@ $$
     =& \mathbb{E}_{\mathcal{A}}[\nabla_{\theta} \log\pi(A\vert s;\theta)\cdot(Q_{\pi}(s,A)-\blue{b})]
 \end{aligned}
 $$
-其中，$A(s,a)=Q_{\pi}(s,a)-\blue{b}$又称为Advantage函数。
+其中，$A(s,a)=Q_{\pi}(s,a)-\blue{b}$又称为**Advantage函数**。
 
 但是为什么要加呢？虽然不改变期望值，但是在使用蒙特卡洛近似(随机采样$a_t$并计算$g_t$)时，选择合适的baseline，可以降低方差。baseline的选择有很多，$b$可以为常数，更常见的选择是$b=V(s)$，即$A(s,a)={\pi}(s,a)-\blue{b}=\pi(s,a)-V_{\pi}(s)$。
 直观的解释Advantange函数的话就是：
@@ -249,10 +274,10 @@ $$
 ### TRPO
 TRPO全称是Trust Region Policy Optimization，是优化策略函数的方法，将数值优化领域的Trust Region优化巧妙应用到策略函数的优化。
 
-首先回忆一下Policy Gradient使用随机梯度上升进行参数优化，它的目标是$\theta^*=\underset{\theta}{\text{argmax}} \, J(\theta)$，在策略梯度的语境下，设$J(\theta)=\mathbb{E}_{S}[V(S;\theta)]$，随机梯度上升重复如下直至收敛：
+首先回忆一下Policy Gradient使用随机梯度上升进行参数优化，它的目标是$\theta^*=\underset{\theta}{\text{argmax}} \, \mathcal{J}(\theta)$：
 
 1. 随机采样得到状态$s$
-2. 计算梯度$\mathbf{g}=\frac{\partial V(s;\theta)}{\partial \theta} \big\vert_{\theta=\theta_{old}}$ $\leftarrow$ <strong style="color: red;">这里注意这个$\text{old}$是当前模型参数的意思，并不是类似off-policy的模型旧参数</strong>，称之为$\text{cur}$更贴切，但是很多的教材当中使用的都是$\text{old}$
+2. 计算梯度$\mathbf{g}=\frac{\partial \mathcal{J}(\theta)}{\partial \theta} \big\vert_{\theta=\theta_{old}}$ $\leftarrow$ <strong style="color: red;">这里注意这个$\text{old}$是当前模型参数的意思，并不是类似off-policy的模型旧参数</strong>，称之为$\text{cur}$更贴切，但是很多的教材当中使用的都是$\text{old}$
 3. 执行梯度上升：$\theta_{\text{new}} \leftarrow \theta_{\text{old}} + \alpha\cdot \mathbf{g}$
 
 #### Trust Region
@@ -267,10 +292,10 @@ Trust Region算法重复两件事情：
 2. **Maximization**: 在Trust Region，更新参数$\theta_{\text{new}}$: $\theta_{\text{new}} \leftarrow \underset{\theta \in \mathcal{N}(\theta_{\text{old}})}{\text{argmax}}\,L(\theta\vert \theta_{\text{old}})$
 
 #### TR Policy Optimization
-首先，定义目标函数$J_{\theta}$，其中的技巧是重要性采样:
+首先，重新改写目标函数$\mathcal{J}(\theta)$，其中的技巧是重要性采样:
 $$
 \begin{aligned}
-    J(\theta) &= \mathbb{E}_{S}[V_{\pi}(S)] \\
+    \mathcal{J}(\theta) &= \mathbb{E}_{S}[V_{\pi}(S)] \\
     &= \mathbb{E}_{S}\big[\sum_{a}\pi(a\vert s;\theta)\cdot Q_{\pi}(s,a)] \\
     &= \mathbb{E}_{S}\big[\pi(a\vert s;\theta_{\text{old}}) \cdot \frac{\pi(a\vert s;\theta)}{\pi(a\vert s;\theta_{\text{old}})} \cdot Q_{\pi}(s,a) \big] \\
     &= \mathbb{E}_{S}\Big[\mathbb{E}_{A \sim \pi(\cdot\vert s;\theta_{\text{old}})}\big[\frac{\pi(a\vert s;\theta)}{\pi(a\vert s;\theta_{\text{old}})} \cdot Q_{\pi}(s,a) \big]\Big] \\
