@@ -206,7 +206,7 @@ $$
 :::
 
 ### Policy Gradient
-对上面的目标函数解析的求梯度(这里参考的是[Wang Shusen](https://github.com/wangshusen/DeepLearning/blob/master/Slides/13_RL_3.pdf)的简化版：
+对上面的目标函数解析的求梯度(这里参考的是[Wang Shusen](https://github.com/wangshusen/DeepLearning/blob/master/Slides/13_RL_3.pdf)的简化版）：
 $$
 \begin{aligned}
     \frac{\partial \mathcal{J}(\theta)}{\partial \theta}&=\frac{\partial \sum_{s\in \mathcal{S}}d(s)\sum_{a}\pi(a\vert s;\theta)\cdot Q_{\pi}(s,a)}{\partial \theta} \\
@@ -220,6 +220,27 @@ $$
 
 $\nabla_{\theta}\mathcal{J}(\theta)$称为策略梯度(Policy gradient)，注意的是它是一个期望值，请记住这个公式。
 
+:::note
+**score function**
+
+score function（评分函数）定义为**对数似然函数关于参数的梯度**，这个不太像是人话，直白的说就是有一个概率分布$p(x;\theta)$，它的参数是$\theta$，想要关于参数$\theta$求导：
+$$
+s(\theta)=\nabla_{\theta}\log p(x;\theta)
+$$
+核心性质：
+
+- **期望为零：** $\mathbb{E}[s(\theta)]=0$，即微小的变化对score的平均影响为$0$
+- **方差与Fisher information：** $Var[s(\theta)]$称为Fisher information, 用于衡量参数估计的精度
+
+**策略梯度的核心是梯度。**
+
+PS: 策略梯度中的$\nabla_{\theta} \log\pi(A\vert s;\theta)$即为策略函数$\pi(a\vert s)$的score function。
+
+PS2: 为什么叫score function这么奇怪的名字？LLM给出的解释是：梯度指示了参数空间中“得分”增长最快的方向，量化评分参数的合理程度，得分越高，参数越合理。
+
+**另外，生成模型中的score-based model，和上面有一些不同，score-based model是指数据分布的对数概率梯度：$s(x)=\nabla_{x}\log p(x)$**
+:::
+
 策略梯度算法使用梯度上升来更新参数(梯度下降用于最小化目标函数，对应的梯度上升用来最大化目标函数)，伪代码如下：
 
 1. 从环境中得到状态$s_t$
@@ -229,7 +250,7 @@ $\nabla_{\theta}\mathcal{J}(\theta)$称为策略梯度(Policy gradient)，注意
 5. (近似)计算policy gradient: $\mathbf{g}(\red{a_t},\theta_t)=q_t\cdot \mathbb{d}_{\theta, t}$ $\leftarrow$这里是使用蒙特卡洛近似，只使用一次随机采样来估计policy gradient(回想一下policy gradient是期望)
 6. 更新模型参数：$\theta_{t+1}=\theta_t + \beta \cdot \mathbf{g}(\red{a_t},\theta_t)$
 
-**使用蒙特卡洛近似的方法对policy gradient是无偏估计，但是它的缺点是方差高。**
+**使用蒙特卡洛近似的方法对policy gradient是无偏估计，但是它的缺点是<strong style="color: red;">方差高</strong>。**
 
 还有一个问题：**如何求$Q_{\pi}(s_t, a_t)$**？使用**REINFORCE**方法:
 
@@ -237,7 +258,7 @@ $\nabla_{\theta}\mathcal{J}(\theta)$称为策略梯度(Policy gradient)，注意
 - 计算$u_t=\sum_{k=t}^{T}\gamma^{k-t}r_k$
 - 因为$Q_{\pi}(s_t,a_t)=\mathbb{E}[U_t]$，我们使用$u_t$来近似$Q_{\pi}(s_t,a_t)$
 
-REINFORCE还有一个<strong style="color: red;">样本效率低</strong>的问题：执行当前策略$\pi_{old}$收集到的轨迹后，更新参数得到了策略函数$\pi_{new}$，这时之前收集到的轨迹就完全没有办法使用了。REINFORCE属于严格的on-policy算法。
+REINFORCE还有一个样本效率低的问题：执行当前策略$\pi_{old}$收集到的轨迹后，更新参数得到了策略函数$\pi_{new}$，这时之前收集到的轨迹就完全没有办法使用了。REINFORCE属于严格的on-policy算法。
 
 另外一个方法是使用一个网络来近似$Q_{\pi}(s_t, a_t)$，这个就属于actor-critic方法了，在后面小节进行。
 
@@ -266,7 +287,7 @@ $$
 $$
 其中，$A(s,a)=Q_{\pi}(s,a)-\blue{b}$又称为**Advantage函数**。
 
-但是为什么要加呢？虽然不改变期望值，但是在使用蒙特卡洛近似(随机采样$a_t$并计算$g_t$)时，选择合适的baseline，可以降低方差。baseline的选择有很多，$b$可以为常数，更常见的选择是$b=V(s)$，即$A(s,a)={\pi}(s,a)-\blue{b}=\pi(s,a)-V_{\pi}(s)$。
+但是为什么要加呢？虽然不改变期望值，但是在使用蒙特卡洛近似(随机采样$a_t$并计算$g_t$)时，选择合适的baseline，可以降低方差。baseline的选择有很多，$b$可以为常数，更常见的选择是$b=V(s)$，即$A(s,a)=Q_{\pi}(s,a)-\blue{b}=Q_{\pi}(s,a)-V_{\pi}(s)$。
 直观的解释Advantange函数的话就是：
 - $A(s,a) > 0$，则表示当前动作$a$的回报优于平均值
 - $A(s,a) < 0$，则表示当前动作$a$的回报低于平均值
@@ -296,7 +317,7 @@ $$
     &= \mathbb{E}_{S,A}\big[\frac{\pi(A\vert S;\theta)}{\pi(A\vert S;\theta_{\text{old}})} \cdot Q_{\pi}(S,A) \big]
 \end{aligned}
 $$
-上式在教材中是使用Advantage函数来替代$Q$函数的，公式推导和理解上差异不大，这里与Wang Shushen老师的课程中的公式一致。
+TRPO论文中是**使用Advantage函数来替代$Q$函数**的，公式推导和理解上差异不大，这里与Wang Shushen老师的课程中的公式一致。
 
 :::note
 $\theta_{\text{old}}$是什么？
@@ -334,12 +355,18 @@ $$
 由于$S$和$A$都是状态和动作的随机变量，可以从状态转移函数和$\pi$函数中随机采样得到，使用$\pi(A\vert s;\theta_{\text{old}})$和概率转移函数得到一组轨迹：$s_1,a_1,r_1,s_2,a_2,r_2,\cdots,s_n,a_n,r_n$，这些轨迹点相当于是训练策略函数$\pi_{\theta}$的训练数据。
 使用这组轨迹（蒙特卡洛）近似$\mathcal{J}(\theta)$:
 $$
-J(\theta)\approx L(\theta\vert\theta_{old})=\frac{1}{n}\sum_{i=1}^{n}\frac{\pi(a_i\vert s_i;\theta)}{\pi(a_i\vert s_i;\theta_{old})}\cdot Q_{\pi}(s_i,a_i)
+\mathcal{J}(\theta)\approx L(\theta\vert\theta_{old})=\frac{1}{n}\sum_{i=1}^{n}\frac{\pi(a_i\vert s_i;\theta)}{\pi(a_i\vert s_i;\theta_{old})}\cdot Q_{\pi}(s_i,a_i)
 $$
 上式中，$Q_{\pi}(s_i,a_i)$可以使用REINFORCE方法用roll out的轨迹进行估计，即$u_i$，则：
 $$
 \tilde{L}(\theta\vert\theta_{old})=\frac{1}{n}\sum_{i=1}^{n}\frac{\pi(a_i\vert s_i;\theta)}{\pi(a_i\vert s_i;\theta_{old})}\cdot u_i
 $$
+
+:::important
+PPO论文中使用的是Generalized Advantage Estimation (GAE)来代替Policy Gradient的Advantage函数。
+
+回忆一下Advantage函数定义：$A_{\pi}(s,a)=Q_{\pi}(s,a)-V_{\pi}(s)$，它衡量当前动作的预期回报相对于平均水平的高低，但是仍然避免不了高方差的问题。GAE结合时序差分（TD）误差的加权和来估计优势函数，从而在偏差和方差之间取得平衡。可以参考这里的实现[Generalized Advantage Estimation (GAE)](https://nn.labml.ai/rl/ppo/gae.html)。
+:::
 
 **Step 2. Maximization**: 在Trust Region，更新参数$\theta_{\text{new}}$:
 $$
