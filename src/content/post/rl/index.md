@@ -58,12 +58,6 @@ $$
 8. **State Transition:**
 状态转移$p(\cdot \vert s, a)$指的是根据当前Agent的状态$s$和采取的动作$a$，环境转移到新状态$s'$的概率，因此状态转移时一个概率密度函数$p(s'\vert s,a)=P(S'=s' \vert S=s, A=a)$。
 
-### MISC
-
-**on-policy v.s off-policy**
-
-**model-free v.s model-based**
-
 ### Policy Function
 **策略函数**$\pi$是RL中最重要的概念之一，是指Agent当前的状态$s$映射到动作空间$\mathcal{A}$内所有动作的**概率分布**，它控制Agent所采取的动作:
 $$
@@ -187,6 +181,7 @@ PS2: 为什么叫score function这么奇怪的名字？LLM给出的解释是：�
 **另外，生成模型中的score-based model，和上面有一些不同，score-based model是指数据分布的对数概率梯度：$s(x)=\nabla_{x}\log p(x)$**
 :::
 
+#### Gradient Ascent
 策略梯度算法使用梯度上升来更新参数(梯度下降用于最小化目标函数，对应的梯度上升用来最大化目标函数)，伪代码如下：
 
 1. 从环境中得到状态$s_t$
@@ -196,7 +191,7 @@ PS2: 为什么叫score function这么奇怪的名字？LLM给出的解释是：�
 5. (近似)计算policy gradient: $\mathbf{g}(\red{a_t},\theta_t)=q_t\cdot \mathbb{d}_{\theta, t}$ $\leftarrow$这里是使用蒙特卡洛近似，只使用一次随机采样来估计policy gradient(回想一下policy gradient是期望)
 6. 更新模型参数：$\theta_{t+1}=\theta_t + \beta \cdot \mathbf{g}(\red{a_t},\theta_t)$
 
-**使用蒙特卡洛近似的方法对policy gradient是无偏估计，但是它的缺点是<strong style="color: red;">方差高</strong>。**
+> **使用蒙特卡洛近似的方法对policy gradient是无偏估计，但是它的缺点是<strong style="color: red;">方差高</strong>。**
 
 还有一个问题：**如何求$Q_{\pi}(s_t, a_t)$**？使用**REINFORCE**方法:
 
@@ -206,7 +201,7 @@ PS2: 为什么叫score function这么奇怪的名字？LLM给出的解释是：�
 
 REINFORCE还有一个样本效率低的问题：执行当前策略$\pi_{old}$收集到的轨迹后，更新参数得到了策略函数$\pi_{new}$，这时之前收集到的轨迹就完全没有办法使用了。REINFORCE属于严格的on-policy算法。
 
-另外一个方法是使用一个网络来近似$Q_{\pi}(s_t, a_t)$，这个就属于actor-critic方法了，在后面小节进行。
+另外一个方法是使用一个网络来近似$Q_{\pi}(s_t, a_t)$，这个就属于Actor-Critic方法了，在后面[小节](#actor-critic-method)进行。
 
 ### Policy Gradient with Baseline 
 前述使用MC采样的Policy Gradient算法的问题是方差较高，学者引入Baseline技巧，可以实现降低方差的作用。
@@ -380,7 +375,7 @@ $$
 
 我们不对DQN的网络做过多解读，举一个简单的打马里奥的例子，游戏的动作动作是$\mathcal{A}=[\text{left}, \text{right}, \text{up}]$，网络的输入是当前的图像，输出是每个动作的价值，例如$[200, 100, 150]$，每次选择最大价值的动作。
 
-#### Temporal Difference Learning
+#### Temporal Difference
 **如何训练DQN呢？** 一般使用TD Learning进行训练。
 
 RL是时序决策框架，通常以一个片段(episode)为基础，即一定会包含终止的状态。在某时刻$t$，使用$Q(s_t, a;\mathbf{w})$来估计不同动作的未来预期回报，但是什么时候才会得到未来预期回报的真值(GroundTruth)呢？那显然得得等到这个片段结束才会知道真值，使用梯度下降来更新模型参数，这样效率就会比较低下。
@@ -422,4 +417,34 @@ $$
 6. 使用梯度下降更新参数：$\mathbf{w_{t+1}}=\mathbf{w_t}-\alpha\cdot (q_t-y_t) \mathbf{d}_t$
 
 ## Actor-Critic Method
-Actor-Critic Method是Value-based和Policy-based的结合，经典的算法有DDPG, A3C等等。
+Actor-Critic Method是Value-based和Policy-based的结合，即使用模型同时对策略函数$\pi(a \vert s; \mathbf{\theta})$和动作-价值函数$Q_{\pi}(a,s;\mathbf{w})$进行建模。在前面[Policy Gradient的训练](#gradient-ascent)处已经提到使用模型来估计$Q$函数。
+
+Actor指的是策略函数$\pi(a \vert s; \mathbf{\theta})$，用来控制动作的输出，Critic指的是动作-价值函数$Q_{\pi}(a,s;\mathbf{w})$，用来对采取的动作进行打分，两者同时训练，使得Agent对动作的预期回报的估计越来越准，也更有可能得到更好的动作：
+$$
+V_{\pi}(s)=\sum_a \pi(a \vert s; \mathbf{\theta}) \cdot Q_{\pi}(a,s;\mathbf{w})
+$$
+
+### Training Actor-Critic
+同时训练策略函数$\pi(a \vert s; \mathbf{\theta})$和动作-价值函数$Q_{\pi}(a,s;\mathbf{w})$，需要同时用到前面的TD和梯度上升，为代码如下：
+
+1. 获得状态$s_t$
+2. 根据$\pi(a \vert s; \mathbf{\theta})$随机采样动作$a_t$
+3. 执行动作$a_t$，从环境中获得奖励$r_t$，并转移到下一个状态$s_{t+1}$
+4. 使用TD更新Critic网络参数$\mathbf{w}$
+    1. 从$\pi(\cdot \vert s_{t+1}; \mathbf{\theta})$采样动作$\tilde a_{t+1}$，但是并**不执行**$\tilde a_{t+1}$
+    2. 使用$Q_{\pi}(a,s;\mathbf{w})$来计算：$q_t=Q(s_t, a_t;\mathbf{w_t})$和$q_{t+1}=Q(s_{t+1}, \tilde a_{t+1}; \mathbf{w_t})$
+    3. 计算TD target: $y_t=r_t+\gamma \cdot q_{t+1}$
+    4. 损失函数：$L(\mathbf{w})=\frac{1}{2}[q_t-y_t]^2$
+    5. 梯度下降更新参数：$\mathbf{w_{t+1}}=\mathbf{w_t}-\alpha \cdot \frac{\partial L(\mathbf{w_t})}{\partial \mathbf{w}} \big |_{\mathbf{w}=\mathbf{w_t}}$
+5. 使用policy gradient来更新参数$\mathbf{\theta}$
+    1. 计算梯度: $\mathbb{d}_{\theta, t}=\frac{\partial \log\pi(a_t \vert s_t, \theta)}{\partial \theta} \big\vert_{\theta=\theta_t}$
+    2. 更新参数：$\mathbf{\theta_{t+1}}=\mathbf{\theta}+\beta \cdot q_t \cdot \mathbb{d}_{\theta, t}$
+6. 重复直到收敛
+
+#### Policy vs Value vs Actor-Critic
+
+### MISC
+
+**on-policy v.s off-policy**
+
+**model-free v.s model-based**
