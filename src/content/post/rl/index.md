@@ -1,12 +1,12 @@
 ---
-title: "Revisit RL"
-description: "reinforcement learning basics"
+title: "Introduction to RL"
+description: "reinforcement learning concept and algos"
 publishDate: "3 April 2025"
 tags: ["tech/rl"]
 draft: false
 ---
 
-> 重新拾起Reinforcement Learning的基础概念和算法。
+> 拾起Reinforcement Learning的基础概念和算法。
 
 ## Terminology
 > 强化学习中有很多的术语和概念，初学时经常被搞得很懵逼，所以先从术语开始，把基础的概念理解好。
