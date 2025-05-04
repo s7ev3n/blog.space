@@ -117,74 +117,20 @@ $$
 
 RL算法的目标是最大化未来累积回报，可以看到，如果已知最优价值函数或最优策略，都可以实现RL这一目标，因此RL算法主要分为Value-based和Policy-based的方法。
 
-## Valued-based Method
-直接使用带参数的函数来近似价值函数称为基于价值函数的算法。
-
-### DQN
-深度学习时代，经典的Deep Q Network就是使用深度网络$Q(s,a ;\mathbf{w})$来近似动作价值函数$Q(s,a)$，并用来控制Agent的动作：
-$$
-a_t=\underset{a}{\text{argmax}} \, Q(s_t, a;\mathbf{w})
-$$
-每次贪心地选择最大化价值的动作，则得到最佳动作-价值函数$Q^*(s,a)$。
-
-我们不对DQN的网络做过多解读，举一个简单的打马里奥的例子，游戏的动作动作是$\mathcal{A}=[\text{left}, \text{right}, \text{up}]$，网络的输入是当前的图像，输出是每个动作的价值，例如$[200, 100, 150]$，每次选择最大价值的动作。
-
-### Temporal Difference (TD) Learning
-**如何训练DQN呢？** 一般使用TD Learning进行训练。
-
-RL是时序决策框架，通常以一个片段(episode)为基础，即一定会包含终止的状态。在某时刻$t$，使用$Q(s_t, a;\mathbf{w})$来估计不同动作的未来预期回报，但是什么时候才会得到未来预期回报的真值(GroundTruth)呢？那显然得得等到这个片段结束才会知道真值，使用梯度下降来更新模型参数，这样效率就会比较低下。
-
-能不能在片段没有结束之前进行更新模型参数呢？可以，因为经过了某些步数之后，获得了这部分奖励的真值，可以使用这部分的真值来更新最初的预测，即每一步都修正之前的预测，每一步都更新模型的参数。
-
-回报$U_t$包含一定的递归属性：$U_t=R_t + \gamma R_{t+1} + \gamma^2 R_{t+2} + \gamma^3 R_{t+3} + \cdots=R_t + \gamma U_{t+1}$。
-
-把上面关于$U_t$的递归方程应用在DQN中：
-$$
-\underbrace{Q(s_t,a;\mathbf{w})}_{\text{Estimate of }U_t} \approx \mathbb{E}[r_t+\gamma\cdot \underbrace{Q(S_{t+1}, A_{t+1}; \mathbf{w})]}_{\text{Estimate of }U_{t+1}} 
-$$
-把求期望括号内的部分称为TD Target:
-$$
-\underbrace{Q(s_t,a;\mathbf{w})}_{\text{Prediction}} \approx  \mathbb{E}\underbrace{[r_t+\gamma\cdot Q(S_{t+1}, A_{t+1}; \mathbf{w})]}_{\text{TD Target}}
-$$
-有了Prediction和Target，就可以构建常见的损失函数更新模型参数了，令：
-$$
-\begin{aligned}
-    y_t &= r_t + \gamma \cdot Q(s_{t+1},a_{t+1};\mathbf{w_t}) \\
-        &= r_t + \gamma \cdot \underset{a}{\text{max}}Q(s_{t+1}, a; \mathbf{w_t})
-\end{aligned}
-$$
-损失函数即为：
-$$
-L = \frac{1}{2}[Q(s_{t},a_{t};\mathbf{w_t})-y_t]^2
-$$
-梯度更新参数：
-$$
-\mathbf{w_{t+1}=\mathbf{w_t}-\alpha\cdot\frac{\partial L}{\partial w}\Big\vert_{w=w_t}}
-$$
-
-使用TD训练DQN的伪代码：
-1. 获得状态$S_t=s_t$，执行动作$A_t=a_t$
-2. 预测价值：$q_t=Q(s_t,a_t;\mathbf{w_t})$
-3. 求微分：$\mathbf{d_t}=\frac{\partial Q(s_t,a_t;\mathbf{w_t})}{\partial \mathbf{w_t}} \big \vert_{w=w_t}$
-4. 环境提供下一个状态$s_{t+1}$和当前的奖励$r_t$
-5. 计算TD Target：$y_t=r_t + \gamma \cdot \underset{a}{\text{max}}Q(s_{t+1}, a; \mathbf{w_t})$
-6. 使用梯度下降更新参数：$\mathbf{w_{t+1}}=\mathbf{w_t}-\alpha\cdot (q_t-y_t) \mathbf{d}_t$
-
 ## Policy-based Method
-前面的Value-based方法，通过学习状态/动作-价值函数，然后选择动作来最大化未来累积回报的预期。
-而Policy-based方法，例如Policy Gradient，是直接建模策略函数$\pi(a\vert s; \theta)$来实现最大化未来累积回报的预期，
+Policy-based方法，例如Policy Gradient，是直接建模策略函数$\pi(a\vert s; \theta)$来实现最大化未来累积回报的预期：
 $$
 \text{maximize} \, \mathcal{J}(\theta)=V_{\pi_{\theta}}(S_1)= \mathbb{E}_{\pi_{\theta}}[V_1]
 $$
 其中，$S_1$是初始状态。
 
-期望累积奖励可以表示为平稳分布下的期望[^1]：
+期望累积奖励可以表示为平稳分布下的期望[^2]：
 $$
 \mathcal{J}(\theta)=\sum_{s\in \mathcal{S}}d_{\pi_{\theta}}(s)V_{\pi_{\theta}}(s)=\sum_{s\in \mathcal{S}}\big(d_{\pi_{\theta}}(s)\sum_{a\in \mathcal{A}}\pi(a\vert s,\theta)Q_{\pi}(s,a) \big)
 $$
 其中，$d_{\pi_{\theta}}(s)$称为平稳分布(stationary distribution)。
 
-[^1]: [Policy Gradient](https://lilianweng.github.io/posts/2018-02-19-rl-overview/#policy-gradient)
+[^2]: [Policy Gradient](https://lilianweng.github.io/posts/2018-02-19-rl-overview/#policy-gradient)
 
 :::note
 什么是平稳分布(Stationary Distribution) ?
@@ -218,10 +164,10 @@ $$
 \end{aligned}
 $$
 
-$\nabla_{\theta}\mathcal{J}(\theta)$称为策略梯度(Policy gradient)，注意的是它是一个期望值，请记住这个公式。
+$\nabla_{\theta}\mathcal{J}(\theta)$称为策略梯度(Policy gradient)，注意的是它是一个期望值，**请记住这个公式**。
 
 :::note
-**score function**
+**Score Function**
 
 score function（评分函数）定义为**对数似然函数关于参数的梯度**，这个不太像是人话，直白的说就是有一个概率分布$p(x;\theta)$，它的参数是$\theta$，想要关于参数$\theta$求导：
 $$
@@ -234,7 +180,7 @@ $$
 
 **策略梯度的核心是梯度。**
 
-PS: 策略梯度中的$\nabla_{\theta} \log\pi(A\vert s;\theta)$即为策略函数$\pi(a\vert s)$的score function。
+PS: 策略梯度中的$\nabla_{\theta} \log\pi(A\vert s;\theta)$即为策略函数$\pi(a\vert s;\theta)$的score function。
 
 PS2: 为什么叫score function这么奇怪的名字？LLM给出的解释是：梯度指示了参数空间中“得分”增长最快的方向，量化评分参数的合理程度，得分越高，参数越合理。
 
@@ -386,9 +332,9 @@ $$
 \end{aligned}
 $$
 
-[PPO算法](https://arxiv.org/pdf/1707.06347)有两个变体，相对TRPO来说都很简洁，它们是$\text{PPO}^{KLPEN}$和$\text{PPO}^{CLIP}$
+[PPO算法](https://arxiv.org/pdf/1707.06347)有两个变体，相对TRPO来说都很简洁，它们是$\text{PPO}^{KLPEN}$和$\text{PPO}^{CLIP}$，其中$\text{PPO}^{CLIP}$效果更好，更常见。
 
-#### PPO Penaty
+#### PPO Penalty
 $\text{PPO}^{KLPEN}$，把约束项$D_{KL}$放入到目标函数中去（有些类似拉格朗日乘子法），就变成了无约束的优化问题，这样就可以直接使用各种一阶优化算法了，例如SGD，ADAM：
 $$
 \mathbb{E}\big[\frac{\pi(a\vert s;\theta)}{\pi(a\vert s;\theta_{\text{old}})}A_{\pi_{\text{old}}}(s,a) \big] - \beta \cdot \mathbb{E}[D_{KL}(\pi_{\theta_{\text{old}}}(\cdot\vert s) \parallel \pi_{\theta}(\cdot \vert s))]
@@ -415,6 +361,65 @@ $$
 - $L^{VF}=(V_{\theta}(s)-V^{target})^2$，$V^{target}$可以通过广义优势估计(General Advantage Estimation, GAE)得到。
 
 - $S[\pi_{\theta}(s)]=\mathbb{E}[-\pi_{\theta}(a\vert s)\log \pi_{\theta}(a\vert s)]$，这一公式是从熵的定义中来，熵越大表明信息量越大，目标函数鼓励这一项更大（因为使用的是$+$号），可以估计模型增加探索，因为$\pi$函数控制动作。
+
+> PPO的算法的实现[^4]有非常多的细节和技巧，对于复现PPO算法很重要，有博客[^3]总结了PPO实现的各种细节，会再另外一篇博客中单独叙述。
+
+[^3]: [The 37 Implementation Details of Proximal Policy Optimization](https://iclr-blog-track.github.io/2022/03/25/ppo-implementation-details/)
+[^4]: [Clean RL PPO](https://docs.cleanrl.dev/rl-algorithms/ppo/)
+
+
+## Valued-based Method
+[Value函数](#value-functions)的定义即为对未来回报的期望，因此直接使用函数来近似动作/状态价值函数(Value Functions)称为基于价值函数的算法。
+
+### DQN
+深度学习时代，经典的Deep Q Network就是使用深度网络$Q(s,a ;\mathbf{w})$来近似动作价值函数$Q(s,a)$，并用来控制Agent的动作：
+$$
+a_t=\underset{a}{\text{argmax}} \, Q(s_t, a;\mathbf{w})
+$$
+每次贪心地选择最大化价值的动作，则得到最佳动作-价值函数$Q^*(s,a)$。
+
+我们不对DQN的网络做过多解读，举一个简单的打马里奥的例子，游戏的动作动作是$\mathcal{A}=[\text{left}, \text{right}, \text{up}]$，网络的输入是当前的图像，输出是每个动作的价值，例如$[200, 100, 150]$，每次选择最大价值的动作。
+
+#### Temporal Difference Learning
+**如何训练DQN呢？** 一般使用TD Learning进行训练。
+
+RL是时序决策框架，通常以一个片段(episode)为基础，即一定会包含终止的状态。在某时刻$t$，使用$Q(s_t, a;\mathbf{w})$来估计不同动作的未来预期回报，但是什么时候才会得到未来预期回报的真值(GroundTruth)呢？那显然得得等到这个片段结束才会知道真值，使用梯度下降来更新模型参数，这样效率就会比较低下。
+
+能不能在片段没有结束之前进行更新模型参数呢？可以，因为经过了某些步数之后，获得了这部分奖励的真值，可以使用这部分的真值来更新最初的预测，即每一步都修正之前的预测，每一步都更新模型的参数。
+
+回报$U_t$包含一定的递归属性：$U_t=R_t + \gamma R_{t+1} + \gamma^2 R_{t+2} + \gamma^3 R_{t+3} + \cdots=R_t + \gamma U_{t+1}$。
+
+把上面关于$U_t$的递归方程应用在DQN中：
+$$
+\underbrace{Q(s_t,a;\mathbf{w})}_{\text{Estimate of }U_t} \approx \mathbb{E}[r_t+\gamma\cdot \underbrace{Q(S_{t+1}, A_{t+1}; \mathbf{w})]}_{\text{Estimate of }U_{t+1}} 
+$$
+把求期望括号内的部分称为TD Target:
+$$
+\underbrace{Q(s_t,a;\mathbf{w})}_{\text{Prediction}} \approx  \mathbb{E}\underbrace{[r_t+\gamma\cdot Q(S_{t+1}, A_{t+1}; \mathbf{w})]}_{\text{TD Target}}
+$$
+有了Prediction和Target，就可以构建常见的损失函数更新模型参数了，令：
+$$
+\begin{aligned}
+    y_t &= r_t + \gamma \cdot Q(s_{t+1},a_{t+1};\mathbf{w_t}) \\
+        &= r_t + \gamma \cdot \underset{a}{\text{max}}Q(s_{t+1}, a; \mathbf{w_t})
+\end{aligned}
+$$
+损失函数即为：
+$$
+L = \frac{1}{2}[Q(s_{t},a_{t};\mathbf{w_t})-y_t]^2
+$$
+梯度更新参数：
+$$
+\mathbf{w_{t+1}=\mathbf{w_t}-\alpha\cdot\frac{\partial L}{\partial w}\Big\vert_{w=w_t}}
+$$
+
+使用TD训练DQN的伪代码：
+1. 获得状态$S_t=s_t$，执行动作$A_t=a_t$
+2. 预测价值：$q_t=Q(s_t,a_t;\mathbf{w_t})$
+3. 求微分：$\mathbf{d_t}=\frac{\partial Q(s_t,a_t;\mathbf{w_t})}{\partial \mathbf{w_t}} \big \vert_{w=w_t}$
+4. 环境提供下一个状态$s_{t+1}$和当前的奖励$r_t$
+5. 计算TD Target：$y_t=r_t + \gamma \cdot \underset{a}{\text{max}}Q(s_{t+1}, a; \mathbf{w_t})$
+6. 使用梯度下降更新参数：$\mathbf{w_{t+1}}=\mathbf{w_t}-\alpha\cdot (q_t-y_t) \mathbf{d}_t$
 
 ## Actor-Critic Method
 Actor-Critic Method是Value-based和Policy-based的结合，经典的算法有DDPG, A3C等等。
