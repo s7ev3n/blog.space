@@ -441,7 +441,7 @@ $$
     2. 更新参数：$\mathbf{\theta_{t+1}}=\mathbf{\theta}+\beta \cdot q_t \cdot \mathbb{d}_{\theta, t}$
 6. 重复直到收敛
 
-#### Policy vs Value vs Actor-Critic
+### Policy vs Value vs Actor-Critic
 
 | 方法 | 优点 | 缺点 |
 | ----| :---- | :---- |
