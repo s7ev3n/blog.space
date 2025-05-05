@@ -1,19 +1,19 @@
 ---
 title: "Diffusion Models"
-description: "diffusion"
+description: "diffusion model"
 publishDate: "25 Jan 2025"
 tags: ["tech/generative"]
 ---
 
 > Diffusion Model（扩散模型）是目前图像、视频生成模型的基础，其核心思想是通过逐步添加噪声（正向扩散）和逐步去噪（反向生成）的过程，将数据从原始分布逐步转换为噪声分布，再通过学习逆过程逐步去除噪音生成高质量样本。
 
-## Denoising Diffusion Probabilistic Model
+## Diffusion Model
 Diffusion model早在2015年论文[^1]中提出，但是在2020年Denoising Diffusion Probabilistic Model, DDPM[^2]工作中得到显著改进，可以生成高质量图像。扩散模型被人熟知包含正向加噪过程和反向去噪过程。
 
 [^1]: [Deep Unsupervised Learning using Nonequilibrium Thermodynamics](https://arxiv.org/abs/1503.03585)
 [^2]: [Denoising Diffusion Probabilistic Model](https://arxiv.org/abs/2006.11239)
 
-### Denoising
+### Diffusion
 > 所谓“噪音”指的是标准正态分布。
 
 **正向扩散过程：把复杂数据“拆解”成简单的噪声**
@@ -24,7 +24,7 @@ Diffusion model早在2015年论文[^1]中提出，但是在2020年Denoising Diff
 
 这两个过程的存在，实际上是为了应对生成模型中的一个核心难题：**如何在复杂的分布中采样**。生成模型，比如GAN，直接从随机噪声中生成数据，但这种方式容易导致模式崩塌（mode collapse），即生成的样本多样性不足。而Denoising Diffusion Model通过正向和反向过程，把生成任务分解成多个小步骤，每一步都只学习一个简单的任务——添加或去除噪声。这种分步学习的方式，不仅提高了模型的稳定性，还显著提升了生成样本的质量和多样性。
 
-### 正向扩散过程
+### Forward Diffusion
 我们令$\mathbf{x_0}$为真实数据图像，从真实的数据分布$\mathbb{q(x)}$从采样，是正向过程初始时的数据，从$0$到$T$步，逐渐加入微小的噪音，经过足够多的步数，最终$\mathbf{x_T}$为从标准高斯分布中随机采样出来的(噪音)数据，即$\mathbf{x_T} \sim \mathcal{N}(\mathbf{0},\mathbf{I})$。正向过程可以使用下图（来自[^2]）表示:
 ![forward_diff](./figs/forward_diffusion.png)
 
@@ -58,7 +58,7 @@ $$
 重参数化计算得到的随机变量$x_t$依然服从$\mathcal{N}(\mu, \sigma^2)$
 :::
 
-#### Parameterization of $\beta_t$
+#### Parameterization of beta
 **$\beta_t$是什么？**
 
 $\beta_t$对前向扩散过程中对噪音进行控制的参数，在DDPM[^2]论文中，$\beta_t$是从$\beta_1=10^{-4}$到$\beta_T=0.02$线性增加的常量，$T=1000$。对比归一化$[-1,1]$之后的像素值，$\beta_t$是很小的值，即每一步添加的噪音是很小的。
@@ -135,7 +135,7 @@ $$
 
 [^2]: [SIGGRAPH 2023 Course on Diffusion Models](https://dl.acm.org/doi/10.1145/3587423.3595503)
 
-### 逆向扩散过程
+### Reverse Diffusion
 > 注意这一节中的大量公式可能会比较绕: 正向过程$q(\mathbf{x}_{1:T} \vert \mathbf{x}_0) = \prod^T_{t=1} q(\mathbf{x}_t \vert \mathbf{x}_{t-1})$，真实的逆向过程$q(\mathbf{x}_{t-1} \vert \mathbf{x}_t)$，近似逆向过程的分布$\mathbf{p}(\mathbf{x}_T)\prod_{t=1}^{T}\mathbf{p}_{\theta}(\mathbf{x}_{t-1} \vert \mathbf{x}_t)$
 
 
@@ -163,7 +163,7 @@ $$
 由于逆向扩散过程也是马尔科夫过程，所以$p(x_1, x_2, \dots, x_T)=p(x_1|x_2, \dots, x_T)\cdots=p(x_1|x_2)\cdots$，因为$x_1$只与$x_2$有关，和其余过程无关。
 :::
 
-### 优化目标
+### Objective
 
 Diffusion模型优化目标的结论是比较简单的，但是公式的推导和理解是需要静下心来慢慢看懂、推导的！
 
@@ -277,7 +277,7 @@ $$
 此时得到的优化目标和DDPM论文终于一致，看下每一项都有什么变化：
 - 重建项$L_0$没有任何变化
 - 先验匹配项$L_T$从$q(x_T \vert x_{T-1})$变成了$q(x_T \vert x_{0})$，由于正向扩散已知，所以这一项基本等于没有变化
-- $L_{T-1}$有巨大的变化(改称为denosing matching term)：从**正向**扩散$q(x_{t} \vert x_{t-1})$变为了**逆向**扩散$q(\red{x_{t-1} \vert x_{t}, x_0})$，方向和$p_{\theta}(x_t \vert x_{t-1})$变为相同，直观变化见下图。另外，条件概率中增加了$x_0$之后，采样只需要采样一个变量$x_t$即可。
+- $L_{T-1}$有巨大的变化(改称为denosing matching term)：从**正向**扩散$q(x_{t} \vert x_{t-1})$变为了**逆向**扩散$q(\red{x_{t-1} \vert x_{t}, x_0})$，方向和$p_{\theta}(x_{t-1} \vert x_t)$变为相同，直观变化见下图。另外，条件概率中增加了$x_0$之后，采样只需要采样一个变量$x_t$即可。
 ![diffusion_derivation_2](./figs/diffusion_second_derivation.png)
 
 
@@ -377,7 +377,7 @@ L_t^\text{simple}
 \end{aligned}
 $$
 
-### Training and Sampling (Generate)
+#### Training and Sampling (Generate)
 训练过程见如下伪代码：
 - 从标准高斯分布中随机采样一个噪声，注意每一个时刻都是独立重新采样的随机高斯噪声，所以不同步$t$，$\epsilon$是不一样的值
 - 代入上式中计算得到$x_t$
@@ -386,10 +386,91 @@ $$
 
 ![diffusion training](./figs/diffusion_training.png)
 
-采样过程，即生成过程的伪代码如下：
+Sampling采样过程，即生成过程的伪代码如下：
 ![diffusion generate](./figs/diffusion_sampling.png)
 在采样（图像生成）过程有一个细节，最后生成的图像(输出值)$\tilde{x}_0$并不是通过$x_{t-1}$计算得到的。而最终生成的图像$x_0$是根据下面公式得到的，当$t=1$时，$\tilde{x}_0$和$\tilde{\mu}$是相等的，
 $$
 \begin{align}\begin{aligned}\tilde{\mu} &= \frac{1} {\sqrt{\alpha_t}} (x_t - \frac{\beta_t}{\sqrt{1-\bar{\alpha_t}} } \epsilon_{\theta}(x_t,t) )\\&=  \frac{1} {\sqrt{\alpha_1}} (x_1 - \frac{1-\alpha_1}{\sqrt{1-\bar{\alpha_1}} } \bar{\epsilon} )\\&=  \frac{1} {\sqrt{\alpha_1}} (x_1 - \frac{1-\alpha_1}{\sqrt{1-\bar{\alpha_1}} } \bar{\epsilon} )\\&=  \frac{1} {\sqrt{\alpha_1}} (x_1 - \frac{1-\alpha_1}{\sqrt{1-\alpha_1} } \bar{\epsilon} )\\&=  \frac{1} {\sqrt{\alpha_1}} (x_1 -  \sqrt{1-\alpha_1}  \bar{\epsilon} )\\&=  \tilde{x}_0\end{aligned}\end{align}
 $$
 > 也就是说我们最终输出的$\tilde{x}_0$是$q(x_{t-1}|x_t, x_0,t=1)$，而不是$q(x_{t-1}|x_t, x_0,t=1)$的采样值。
+
+### [TODO] Improved DDPM
+学习方差，线性schedule改成余弦schedule
+
+## Diffusion Model Improvement
+这里开始介绍一些扩散模型经典的后续工作。
+
+### DDIM: Fewer Sampling Steps
+在DDPM工作中，正向扩散过程和逆向扩散过程都被定义为马尔科夫过程，为理论的构建（公式推导）提供了基础，但是这带来一个问题是漫长的生成过程，DDPM中采样1000步，且需要顺序执行，生成速度很慢。
+
+[DDIM](https://arxiv.org/abs/2010.02502)的**核心发现是DDPM的目标函数$L_{T-1}$只依赖于$q(x_t\vert x_0)$(可以看作是边缘概率)，而不必依赖联合概率$q(x_{1:T}\vert x_0)$**！即**扩散过程并不需要严格遵循马尔科夫链**（后续的score-based方法也有相同的结论）。作者对$q(x_t\vert x_0)$使用非马尔科夫的形式展开，重新定义了扩散正向和逆向过程，由于是非马尔科夫形式，生成过程不必顺序逐步执行，极大减少了采样步骤，提高了生成的速度，图像质量略微下降。但是，同时也牺牲了生成多样性。
+
+#### Revisit DDPM
+回顾一下DDPM的[正向扩散过程](#forward-diffusion)和[逆向扩散过程](#reverse-diffusion)：
+
+- 正向过程定义为：
+$$
+q(\mathbf{x}_{1:T} \vert \mathbf{x}_0) = \prod^T_{t=1} q(\mathbf{x}_t \vert \mathbf{x}_{t-1}) \quad \text{where} \quad q(\mathbf{x}_t \vert \mathbf{x}_{t-1}) := \mathcal{N}(\mathbf{x}_t; \sqrt{1 - \beta_t} \mathbf{x}_{t-1}, \beta_t\mathbf{I})
+$$
+正向过程有一个非常好的性质，可以使$x_t$只依赖于$x_0$：
+$$
+q(\mathbf{x}_t \vert \mathbf{x}_0) = \mathcal{N}(\mathbf{x}_t; \sqrt{1-\bar{\beta}_t} \mathbf{x}_0, \bar{\beta}_t\mathbf{I})
+$$
+而$q(\mathbf{x}_t \vert \mathbf{x}_0)$可以看作是将$x_{1:t-1}$都积分掉的边缘函数：
+$$
+q(\mathbf{x}_t \vert \mathbf{x}_0)=\int q(x_{1:t}\vert x_0)d_{1:t-1}
+$$
+
+- 生成(逆向)过程定义为：
+$$
+\mathbf{p}_{\theta}(\mathbf{x}_{0:T})=\mathbf{p}(\mathbf{x}_T)\prod_{t=1}^{T}\mathbf{p}_{\theta}(\mathbf{x}_{t-1}|\mathbf{x}_t)
+$$
+生成样本的概率$p(x_0)$是积分掉$x_{T:1}$的中间隐变量：
+$$
+\mathbf{p}_{\theta}(\mathbf{x}_{0})=\int \mathbf{p}_{\theta}(\mathbf{x}_{0:T})d_{1:T}
+$$
+目标函数是最大化$p(x_0)$，进而转化为求变分下界ELBO：
+$$
+\begin{aligned}
+    \max _\theta \mathbb{E}_{q\left(x_0\right)}\left[\log p_\theta\left(x_0\right)\right] &\leq \max _\theta \mathbb{E}_{q\left(x_0, x_1, \ldots, x_T\right)}\left[\log p_\theta\left(x_{0: T}\right)-\log q\left(x_{1: T} \mid x_0\right)\right] \\
+    &\leq \mathbb{E}_{q(x_{1}|x_0)}\left[\ln p_{{\theta}}(x_0|x_1)\right] - \sum_{t=2}^{T} \mathbb{E}_{q(x_{t}|x_0)}\left[D_{KL}({q(x_{t-1}|x_t, x_0)}\parallel{p_{{\theta}}(x_{t-1}|x_t)})\right]
+\end{aligned}
+$$
+
+其中最重要的是逆向$\red{q^{rev}(x_{t-1}|x_t, x_0)}$，在[前面小节](#rewrite-variational-lower-bound)正式因为条件概率中增加了对$x_0$的条件使得逆向$q(x_{t-1}|x_t)$变得可计算(tractable)。
+
+DDIM的**目标是摆脱马尔科夫的假设，并且保持目标函数不变，复用DDPM训练的模型$\epsilon_{\theta}$**，
+
+#### Non-Markovian Forward Diffusion
+让我们来重新定义正向过程$q(x_{1:T}\vert x_0)$，摆脱马尔科夫的限制，引入一个自由参数$\sigma^2$（为$q_{\sigma}(x_{t-1}|x_t,x_0)$的方差）：
+$$
+\text{Forward diffusion:}\quad q_\sigma (x_{1:T}|x_0) := q_{\sigma}(x_T|x_0) \prod_{t=2}^T q_{\sigma}(x_{t-1}|x_t,x_0)
+$$
+$q_{\sigma}(x_{t-1}|x_t,x_0)$中$x_{t-1}$同时依赖于$x_t$和$x_0$，因此不满足马尔科夫链的条件了。
+
+> 但是仔细看这个定义还是有些奇怪的，正向过程的定义中出现的$q_{\sigma}(x_{t-1}|x_t,x_0)$，这个按照含义来看，是逆向过程。此处不要过多陷入解读为什么的陷阱。
+
+新的正向过程中的两项：
+
+- $q_{\sigma}(x_T|x_0)$与DDPM中保持一致：$q_\sigma(x_T|x_{0})
+\sim \mathcal{N}(\sqrt{\bar{ \alpha}_T }x_0,(1- \bar{ \alpha}_T) I)$
+- 对于任意$t > 1$，$q_{\sigma}(x_{t-1}|x_t,x_0)$服从分布：
+$$
+q_{\sigma}(x_{t-1}|x_t,x_0) \sim \mathcal{N} \left(
+\underbrace{
+    \sqrt{\bar{\alpha}_{t-1}} \ x_0
+    + \sqrt{1-\bar{\alpha}_{t-1}-\sigma_t^2} \cdot \frac{x_t - \sqrt{\bar{\alpha}_t} \ x_0 }{\sqrt{1-\bar{\alpha}_t}}
+}_{\text{期望}}
+, \underbrace{ \sigma_t^2 \textit{I} }_{\text{方差}}
+\right )
+$$
+
+### LDM: Latent Variable Space
+
+### Conditioned Generation
+
+### Stable Diffusion
+
+### DiT: Diffusion Transformer
+
+## Score-based Diffusion Model
