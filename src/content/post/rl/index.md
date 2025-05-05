@@ -425,7 +425,7 @@ V_{\pi}(s)=\sum_a \pi(a \vert s; \mathbf{\theta}) \cdot Q_{\pi}(a,s;\mathbf{w})
 $$
 
 ### Training Actor-Critic
-同时训练策略函数$\pi(a \vert s; \mathbf{\theta})$和动作-价值函数$Q_{\pi}(a,s;\mathbf{w})$，需要同时用到前面的TD和梯度上升，为代码如下：
+同时训练策略函数$\pi(a \vert s; \mathbf{\theta})$和动作-价值函数$Q_{\pi}(a,s;\mathbf{w})$，需要分别用到前面的TD和梯度上升，伪代码如下：
 
 1. 获得状态$s_t$
 2. 根据$\pi(a \vert s; \mathbf{\theta})$随机采样动作$a_t$
@@ -443,8 +443,30 @@ $$
 
 #### Policy vs Value vs Actor-Critic
 
+| 方法 | 优点 | 缺点 |
+| ----| :---- | :---- |
+| Policy-based | 1.直接优化策略函数，适合连续动作空间 <br>2.支持随机策略（从策略函数中采样得到动作） | 1.**高方差**，训练不稳定 <br>2.采样效率低（on-policy），收敛速度慢 <br>3.可能陷入局部最优，对超参敏感|
+| Value-based | 1.采样效率高：经验回放复用样本 <br>2.确定性策略，通过价值函数选择最佳动作 <br>3.收敛性较好 | 1.无法处理连续动作空间 <br>2.确定性策略函数灵活性差 <br>3.Q-learning的max操作导致价值函数高估 |
+| Actor-Critic | 1.结合Policy和Value方法，平衡探索与利用(随机/确定性策略) <br>2.低方差，Critic估计逼policy方法方差更低 <br>3.可处理连续和离散动作空间 | 1.训练难度高，同时训练两个网络，调参难度大 <br>2.Critic估计的误差可能误导Actor <br>3.依赖Critic估计的准确性 |
+
 ### MISC
 
-**on-policy v.s off-policy**
+#### on-policy v.s off-policy
+| 名称 | on-policy | off-policy |
+| ----| :---- | :---- |
+| 定义 | 行为策略(生成数据的策略)和目标策略(正在被优化的策略)必须是同一个策略 | 行为策略和目标策略不是同一个策略 |
+| 特性 | 1.必须用当前策略与环境交互(rollout)的数据使用策略更新 <br>2.策略更新后之前的数据被扔掉，样本效率低 | 1.可复用历史数据，样本效率高 <br>2.行为策略可以更自由(如更注重探索)，而目标策略更注重优化 <br>3.数据来自不同策略，需处理分布的差异 |
+| 算法 | 典型算法：REINFORCE, SARSA, PPO | 典型算法：Q-Learnig, DQN, DDPG |
 
-**model-free v.s model-based**
+#### model-free v.s model-based
+**model-based方法：**
+
+- 显式地学习动态模型，即转移函数$P(s' \vert s, a)$和奖励函数$R(s,a)$，利用该模型进行规划(Planning)，例如通过模拟环境预测未来状态，从而优化策略或价值函数
+- 特点：依赖环境模型，通过模型生成的虚拟轨迹来辅助决策
+- 典型算法：Monte Carlo Tree Search (MCTS)（如AlphaGo中的规划方法），[Dyna-Q](https://dl.acm.org/doi/pdf/10.1145/122344.122377), [PILCO](https://mlg.eng.cam.ac.uk/pub/pdf/DeiRas11.pdf)
+
+**model-free方法：**
+
+- **不**显式地学习动态模型，直接通过试错从经验中学习策略或价值函数，依赖与环境的实时交互数据，而非通过动态模型的预测
+- 特点：不依赖动态模型，数据驱动，样本效率低，需要海量的交互数据；这也是目前主流的算法方向
+- 典型算法：Q-Learning, DQN，REINFORCE， PPO，A3C
