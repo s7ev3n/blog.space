@@ -1,8 +1,8 @@
 ---
-title: "End to End Autonomous Driving"
-description: "E2E AD"
+title: "E2E Autonomous Driving Lit Review"
+description: "E2E AD Lit Review"
 publishDate: "1 March 2025"
-tags: ["tech/adas/e2e"]
+tags: ["tech/research"]
 ---
 
 > 早在2016年读博期间，尝试过古早的行为克隆端到端(End to End)驾驶[End to End Learning for Self-Driving Cars](https://arxiv.org/pdf/1604.07316)和强化学习端到端[DDPG Torcs Racing](https://github.com/s7ev3n/gym_torcs_modified)。再Tesla FSD的推动下，智驾行业技术范式正在向极致数据驱动的端到端发展。这篇博客尝试对目前为止端到端范式的技术思想、最新进展做持续的思考和更新。
@@ -47,3 +47,6 @@ Sparse Supervision: 可以区分IL和RL的奖励稀疏问题。IL中："监督�
 
 “另外一个思路是通过大模型将世界常识注入到IL中，来解释为什么expert会采用这样的一个action。也就是通过大模型将demonstration拆解并提供更多的监督。”
 
+
+
+## Lit Review
