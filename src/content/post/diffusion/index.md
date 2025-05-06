@@ -442,17 +442,19 @@ $$
 DDIM的**目标是摆脱马尔科夫的假设，并且保持目标函数不变，复用DDPM训练的模型$\epsilon_{\theta}$**，
 
 #### Non-Markovian Forward Diffusion
-让我们来重新定义正向过程$q(x_{1:T}\vert x_0)$，摆脱马尔科夫的限制，引入一个自由参数$\sigma^2$（为$q_{\sigma}(x_{t-1}|x_t,x_0)$的方差）：
+:::tip
+分布族是一个在共同样本空间 X 上定义的、由参数索引的密度或概率质量函数集合，这些函数共享共同的数学形式和结构，只是参数的取值不同。
+:::
+
+DDIM论文中重新定义了一组由$\sigma$索引的分布族(distribution family):
 $$
-\text{Forward diffusion:}\quad q_\sigma (x_{1:T}|x_0) := q_{\sigma}(x_T|x_0) \prod_{t=2}^T q_{\sigma}(x_{t-1}|x_t,x_0)
+q_\sigma (x_{1:T}|x_0) := q_{\sigma}(x_T|x_0) \prod_{t=2}^T q_{\sigma}(x_{t-1}|x_t,x_0)
 $$
-$q_{\sigma}(x_{t-1}|x_t,x_0)$中$x_{t-1}$同时依赖于$x_t$和$x_0$，因此不满足马尔科夫链的条件了。
+其中，$\sigma$为$q_{\sigma}(x_{t-1}|x_t,x_0)$的方差。符号$:=$表示“定义为”。
 
-> 但是仔细看这个定义还是有些奇怪的，正向过程的定义中出现的$q_{\sigma}(x_{t-1}|x_t,x_0)$，这个按照含义来看，是逆向过程。此处不要过多陷入解读为什么的陷阱。
+上述定义中等式右边的两项：
 
-新的正向过程中的两项：
-
-- $q_{\sigma}(x_T|x_0)$与DDPM中保持一致：$q_\sigma(x_T|x_{0})
+- 对于$t=1$, $q_{\sigma}(x_T|x_0)$与DDPM中保持一致：$q_\sigma(x_T|x_{0})
 \sim \mathcal{N}(\sqrt{\bar{ \alpha}_T }x_0,(1- \bar{ \alpha}_T) I)$
 - 对于任意$t > 1$，$q_{\sigma}(x_{t-1}|x_t,x_0)$服从分布：
 $$
@@ -464,6 +466,25 @@ q_{\sigma}(x_{t-1}|x_t,x_0) \sim \mathcal{N} \left(
 , \underbrace{ \sigma_t^2 \textit{I} }_{\text{方差}}
 \right )
 $$
+
+:::important
+DDIM论文中没有将$q_\sigma (x_{1:T}|x_0)$解读为前向过程，虽然这个写法是前向过程，而是使用了分布族群（WHY?）。这个分布族群的定义还是有些奇怪的：正向过程的定义中出现的$q_{\sigma}(x_{t-1}\vert x_t,x_0)$，这个按照写法来看，这是逆向过程，WHY！
+
+前向过程的本质是如何从$x_0$得到一系列噪声样本$x_1, x_2, \cdots, x_T$。在DDPM的马尔可夫假设的逆向过程定义中，从$x_0$顺序加噪音直到$x_T$获得噪声样本，但是我们也知道，可以通过重参数技巧的推导，$x_t$可以只依赖$x_0$并加噪音得到，即不是严格遵循马尔可夫假设。
+
+回到分布族的定义，DDIM的使用了时间方向逆向的采样，得到噪声样本$x_1, x_2, \cdots, x_{T-1}$，因为我们已知前向过程的已知的结构（知道$x_0$得到$x_t$）：首先从$x_0$中使用$q_\sigma(x_T|x_{0})
+\sim \mathcal{N}(\sqrt{\bar{ \alpha}_T }x_0,(1- \bar{ \alpha}_T) I)$采样出$x_T$，然后倒序使用$q_{\sigma}(x_{t-1}\vert x_t,x_0)$采样$x_{T-1}, \cdots ,x_1$。$q_{\sigma}(x_{t-1}\vert x_t,x_0)$不应该理解成逆向过程，而是理解为逆向采样计算方式，即：$q_{\sigma}(x_{t-1}\vert x_t,x_0)$的出现仅仅是数学上的重构工具，并不改变整个过程是从$x_0$开始、依次加入噪声的前向过程这一事实。
+:::
+
+DDIM论文中，通过贝叶斯展开来得到**非马尔可夫的前线过程**定义：
+$$
+q^{\text{fwd}}_{\sigma}(x_{t} \vert x_{t-1}, x_0) = \frac{q_{\sigma}(x_{t-1} \vert x_t, x_0)q_{\sigma}(x_t \vert x_0)}{q_{\sigma}(x_{t-1} \vert x_0)}
+$$
+
+$q_{\sigma}(x_{t}\vert x_{t-1},x_0)$中$x_{t}$同时依赖于$x_{t-1}$和$x_0$，因此不满足马尔科夫链的条件。至此，正向过程被重新定义为非马尔可夫过程。
+
+#### Generative process
+
 
 ### LDM: Latent Variable Space
 
