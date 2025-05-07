@@ -412,6 +412,8 @@ $$
 $$
 q(\mathbf{x}_{1:T} \vert \mathbf{x}_0) = \prod^T_{t=1} q(\mathbf{x}_t \vert \mathbf{x}_{t-1}) \quad \text{where} \quad q(\mathbf{x}_t \vert \mathbf{x}_{t-1}) := \mathcal{N}(\mathbf{x}_t; \sqrt{1 - \beta_t} \mathbf{x}_{t-1}, \beta_t\mathbf{I})
 $$
+马尔可夫过程如下图：
+![](./figs/diffusion-orig.svg)
 正向过程有一个非常好的性质，可以使$x_t$只依赖于$x_0$：
 $$
 q(\mathbf{x}_t \vert \mathbf{x}_0) = \mathcal{N}(\mathbf{x}_t; \sqrt{1-\bar{\beta}_t} \mathbf{x}_0, \bar{\beta}_t\mathbf{I})
@@ -443,10 +445,10 @@ DDIM的**目标是摆脱马尔科夫的假设，并且保持目标函数不变�
 
 #### Non-Markovian Forward Diffusion
 :::tip
-分布族是一个在共同样本空间 X 上定义的、由参数索引的密度或概率质量函数集合，这些函数共享共同的数学形式和结构，只是参数的取值不同。
+分布族是一个在共同样本空间$X$上定义的、由参数索引的密度或概率质量函数集合，这些函数共享共同的数学形式和结构，只是参数的取值不同。
 :::
 
-DDIM论文中重新定义了一组由$\sigma$索引的分布族(distribution family):
+DDIM论文中重新定义了一组由$\sigma$索引的分布族$\mathcal{Q}$(distribution family):
 $$
 q_\sigma (x_{1:T}|x_0) := q_{\sigma}(x_T|x_0) \prod_{t=2}^T q_{\sigma}(x_{t-1}|x_t,x_0)
 $$
@@ -481,7 +483,8 @@ $$
 q^{\text{fwd}}_{\sigma}(x_{t} \vert x_{t-1}, x_0) = \frac{q_{\sigma}(x_{t-1} \vert x_t, x_0)q_{\sigma}(x_t \vert x_0)}{q_{\sigma}(x_{t-1} \vert x_0)}
 $$
 
-$q_{\sigma}(x_{t}\vert x_{t-1},x_0)$中$x_{t}$同时依赖于$x_{t-1}$和$x_0$，因此不满足马尔科夫链的条件。至此，正向过程被重新定义为非马尔可夫过程。
+$q_{\sigma}(x_{t}\vert x_{t-1},x_0)$中$x_{t}$同时依赖于$x_{t-1}$和$x_0$，因此不满足马尔科夫链的条件。至此，正向过程被重新定义为非马尔可夫过程，直观展示如下图：
+![non-markovian forward](./figs/diffusion-generalized.svg)
 
 #### Generative process
 
