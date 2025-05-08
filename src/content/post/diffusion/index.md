@@ -403,17 +403,18 @@ $$
 ### DDIM: Fewer Sampling Steps
 在DDPM工作中，正向扩散过程和逆向扩散过程都被定义为马尔科夫过程，为理论的构建（公式推导）提供了基础，但是这带来一个问题是漫长的生成过程，DDPM中采样1000步，且需要顺序执行，生成速度很慢。
 
-[DDIM](https://arxiv.org/abs/2010.02502)的**核心发现是DDPM的目标函数$L_{T-1}$只依赖于$q(x_t\vert x_0)$(可以看作是边缘概率)，而不必依赖联合概率$q(x_{1:T}\vert x_0)$**！即**扩散过程并不需要严格遵循马尔科夫链**（后续的score-based方法也有相同的结论）。作者对$q(x_t\vert x_0)$使用非马尔科夫的形式展开，重新定义了扩散正向和逆向过程，由于是非马尔科夫形式，生成过程不必顺序逐步执行，极大减少了采样步骤，提高了生成的速度，图像质量略微下降。但是，同时也牺牲了生成多样性。
+[DDIM](https://arxiv.org/abs/2010.02502)的**核心发现是DDPM的目标函数$L_{T-1}$只依赖于$q(x_t\vert x_0)$(看作是边缘概率，DDIM中称为marginals)，而不必依赖联合概率$q(x_{1:T}\vert x_0)$**！即**扩散过程并不需要严格遵循马尔科夫链**（后续的score-based方法也有相同的结论）。作者对$q(x_t\vert x_0)$使用非马尔科夫的形式展开，重新定义了扩散正向和逆向过程，由于是非马尔科夫形式，生成过程不必顺序逐步执行，极大减少了采样步骤，提高了生成的速度，图像质量略微下降。但是，同时也牺牲了生成多样性。
 
 #### Revisit DDPM
 回顾一下DDPM的[正向扩散过程](#forward-diffusion)和[逆向扩散过程](#reverse-diffusion)：
 
-- 正向过程使用马尔科夫假设定义为：
+- 正向过程使用马尔科夫假设定义为(图示)：
 $$
 q(\mathbf{x}_{1:T} \vert \mathbf{x}_0) = \prod^T_{t=1} q(\mathbf{x}_t \vert \mathbf{x}_{t-1}) \quad \text{where} \quad q(\mathbf{x}_t \vert \mathbf{x}_{t-1}) := \mathcal{N}(\mathbf{x}_t; \sqrt{1 - \beta_t} \mathbf{x}_{t-1}, \beta_t\mathbf{I})
 $$
-马尔可夫过程如下图：
+
 ![](./figs/diffusion-orig.svg)
+
 正向过程有一个非常好的性质，可以使$x_t$只依赖于$x_0$：
 $$
 q(\mathbf{x}_t \vert \mathbf{x}_0) = \mathcal{N}(\mathbf{x}_t; \sqrt{1-\bar{\beta}_t} \mathbf{x}_0, \bar{\beta}_t\mathbf{I})
@@ -439,16 +440,14 @@ $$
 \end{aligned}
 $$
 
-其中最重要的是逆向$\red{q^{rev}(x_{t-1}|x_t, x_0)}$，在[前面小节](#rewrite-variational-lower-bound)正式因为条件概率中增加了对$x_0$的条件使得逆向$q(x_{t-1}|x_t)$变得可计算(tractable)。
-
-DDIM的**目标是摆脱马尔科夫的假设，并且保持目标函数不变，复用DDPM训练的模型$\epsilon_{\theta}$**，
+其中最重要的是逆向$\mathbf{\red{q(x_{t-1}\vert x_t, x_0)}}$，在[前面小节](#rewrite-variational-lower-bound)正是因为条件概率中增加了对$x_0$的条件使得逆向$q(x_{t-1}|x_t)$变得可计算(tractable)，进而DDPM推导出模型$\epsilon_{\theta}$只需要预测前向过程$t$时刻添加的噪音即可。
 
 #### Non-Markovian Forward Diffusion
 :::tip
 分布族是一个在共同样本空间$X$上定义的、由参数索引的密度或概率质量函数集合，这些函数共享共同的数学形式和结构，只是参数的取值不同。
 :::
 
-DDIM论文中重新定义了一组由$\sigma$索引的分布族$\mathcal{Q}$(distribution family):
+DDIM论文中重新定义了一组由$\sigma$索引的分布族$\mathcal{Q}$(distribution family)，**虽然它看起来和DDPM中前向过程的定义一样，这里把它理解成已知$x_0$的联合概率**:
 $$
 q_\sigma (x_{1:T}|x_0) := q_{\sigma}(x_T|x_0) \prod_{t=2}^T q_{\sigma}(x_{t-1}|x_t,x_0)
 $$
@@ -460,14 +459,18 @@ $$
 \sim \mathcal{N}(\sqrt{\bar{ \alpha}_T }x_0,(1- \bar{ \alpha}_T) I)$
 - 对于任意$t > 1$，$q_{\sigma}(x_{t-1}|x_t,x_0)$服从分布：
 $$
-q_{\sigma}(x_{t-1}|x_t,x_0) \sim \mathcal{N} \left(
+\begin{align}
+    q_{\sigma}(x_{t-1}|x_t,x_0) \sim \mathcal{N} \left(
 \underbrace{
     \sqrt{\bar{\alpha}_{t-1}} \ x_0
     + \sqrt{1-\bar{\alpha}_{t-1}-\sigma_t^2} \cdot \frac{x_t - \sqrt{\bar{\alpha}_t} \ x_0 }{\sqrt{1-\bar{\alpha}_t}}
 }_{\text{期望}}
 , \underbrace{ \sigma_t^2 \textit{I} }_{\text{方差}}
 \right )
+\end{align}
 $$
+
+>需要注意一点，即$\sigma \rightarrow 0$时，$q_{\sigma}(x_{t-1}|x_t,x_0)$的方差变成了0，即已知$x_0$和$x_t$的话，$x_{t-1}$就确定了，没有了随机性。
 
 :::important
 DDIM论文中没有将$q_\sigma (x_{1:T}|x_0)$解读为前向过程，虽然这个写法是前向过程，而是使用了分布族群（WHY?）。这个分布族群的定义还是有些奇怪的：正向过程的定义中出现的$q_{\sigma}(x_{t-1}\vert x_t,x_0)$，这个按照写法来看，这是逆向过程，WHY！
@@ -483,11 +486,11 @@ $$
 q^{\text{fwd}}_{\sigma}(x_{t} \vert x_{t-1}, x_0) = \frac{q_{\sigma}(x_{t-1} \vert x_t, x_0)q_{\sigma}(x_t \vert x_0)}{q_{\sigma}(x_{t-1} \vert x_0)}
 $$
 
-$q_{\sigma}(x_{t}\vert x_{t-1},x_0)$中$x_{t}$同时依赖于$x_{t-1}$和$x_0$，因此不满足马尔科夫链的条件。至此，正向过程被重新定义为非马尔可夫过程，直观展示如下图：
+$q^{\text{fwd}}_{\sigma}(x_{t}\vert x_{t-1},x_0)$中$x_{t}$同时依赖于$x_{t-1}$和$x_0$，因此不满足马尔科夫链的条件。至此，正向过程被重新定义为非马尔可夫过程，直观展示如下图：
 ![non-markovian forward](./figs/diffusion-generalized.svg)
 
-#### Generative process
 
+#### Generative Process
 
 ### LDM: Latent Variable Space
 
