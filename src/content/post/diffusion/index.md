@@ -442,12 +442,12 @@ $$
 
 其中最重要的是逆向$\mathbf{\red{q(x_{t-1}\vert x_t, x_0)}}$，在[前面小节](#rewrite-variational-lower-bound)正是因为条件概率中增加了对$x_0$的条件使得逆向$q(x_{t-1}|x_t)$变得可计算(tractable)，进而DDPM推导出模型$\epsilon_{\theta}$只需要预测前向过程$t$时刻添加的噪音即可。
 
-#### Non-Markovian Forward Diffusion
+#### Non-Markovian Forward Process
 :::tip
 分布族是一个在共同样本空间$X$上定义的、由参数索引的密度或概率质量函数集合，这些函数共享共同的数学形式和结构，只是参数的取值不同。
 :::
 
-DDIM论文中重新定义了一组由$\sigma$索引的分布族$\mathcal{Q}$(distribution family)，**虽然它看起来和DDPM中前向过程的定义一样，这里把它理解成已知$x_0$的联合概率**:
+DDIM论文中重新定义了一组由$\sigma$索引的分布族$\mathcal{Q}$(distribution family)，**虽然它看起来和DDPM中前向过程的定义一样，这里应该把它理解成已知$x_0$的联合概率**(即，只要出现$x_1, \cdots, x_T$即可，并不需要严格的从$1$到$T$顺序):
 $$
 q_\sigma (x_{1:T}|x_0) := q_{\sigma}(x_T|x_0) \prod_{t=2}^T q_{\sigma}(x_{t-1}|x_t,x_0)
 $$
@@ -455,8 +455,8 @@ $$
 
 上述定义中等式右边的两项：
 
-- 对于$t=1$, $q_{\sigma}(x_T|x_0)$与DDPM中保持一致：$q_\sigma(x_T|x_{0})
-\sim \mathcal{N}(\sqrt{\bar{ \alpha}_T }x_0,(1- \bar{ \alpha}_T) I)$
+- $q_{\sigma}(x_T|x_0)$与DDPM中保持一致：$q_\sigma(x_T|x_{0})
+\sim \mathcal{N}(\sqrt{\bar{ \alpha}_T }x_0,(1- \bar{ \alpha}_T) I)$，作者证明对于任意$1\le t \le T$都成立
 - 对于任意$t > 1$，$q_{\sigma}(x_{t-1}|x_t,x_0)$服从分布：
 $$
 \begin{align}
@@ -473,12 +473,9 @@ $$
 >需要注意一点，即$\sigma \rightarrow 0$时，$q_{\sigma}(x_{t-1}|x_t,x_0)$的方差变成了0，即已知$x_0$和$x_t$的话，$x_{t-1}$就确定了，没有了随机性。
 
 :::important
-DDIM论文中没有将$q_\sigma (x_{1:T}|x_0)$解读为前向过程，虽然这个写法是前向过程，而是使用了分布族群（WHY?）。这个分布族群的定义还是有些奇怪的：正向过程的定义中出现的$q_{\sigma}(x_{t-1}\vert x_t,x_0)$，这个按照写法来看，这是逆向过程，WHY！
+DDIM论文定义中没有将$q_\sigma (x_{1:T}|x_0)$解读为前向过程，虽然这个写法和DDPM中的前向过程写法是一模一样的，前面也提到过应该按照**联合概率**来理解。
 
-前向过程的本质是如何从$x_0$得到一系列噪声样本$x_1, x_2, \cdots, x_T$。在DDPM的马尔可夫假设的逆向过程定义中，从$x_0$顺序加噪音直到$x_T$获得噪声样本，但是我们也知道，可以通过重参数技巧的推导，$x_t$可以只依赖$x_0$并加噪音得到，即不是严格遵循马尔可夫假设。
-
-回到分布族的定义，DDIM的使用了时间方向逆向的采样，得到噪声样本$x_1, x_2, \cdots, x_{T-1}$，因为我们已知前向过程的已知的结构（知道$x_0$得到$x_t$）：首先从$x_0$中使用$q_\sigma(x_T|x_{0})
-\sim \mathcal{N}(\sqrt{\bar{ \alpha}_T }x_0,(1- \bar{ \alpha}_T) I)$采样出$x_T$，然后倒序使用$q_{\sigma}(x_{t-1}\vert x_t,x_0)$采样$x_{T-1}, \cdots ,x_1$。$q_{\sigma}(x_{t-1}\vert x_t,x_0)$不应该理解成逆向过程，而是理解为逆向采样计算方式，即：$q_{\sigma}(x_{t-1}\vert x_t,x_0)$的出现仅仅是数学上的重构工具，并不改变整个过程是从$x_0$开始、依次加入噪声的前向过程这一事实。
+前向过程的本质是如何从$x_0$得到一系列噪声样本$x_1, x_2, \cdots, x_T$，并严格不是按照顺序从$x_1$到$x_T$，因此前向过程本质上就是联合概率。在DDPM的马尔可夫假设的逆向过程定义中，从$x_0$顺序加噪音直到$x_T$获得噪声样本，但是我们也知道，可以通过重参数技巧的推导，$x_t$可以只依赖$x_0$并加噪音得到，即不是严格遵循马尔可夫假设。$q(x_t \vert x_0)$更进一步可以看成是边缘概率，即约掉中间的$x_1$到$x_{t-1}$得到：$q(\mathbf{x}_t \vert \mathbf{x}_0)=\int q(x_{1:t}\vert x_0)d_{1:t-1}$
 :::
 
 DDIM论文中，通过贝叶斯展开来得到**非马尔可夫的前线过程**定义：
@@ -489,8 +486,43 @@ $$
 $q^{\text{fwd}}_{\sigma}(x_{t}\vert x_{t-1},x_0)$中$x_{t}$同时依赖于$x_{t-1}$和$x_0$，因此不满足马尔科夫链的条件。至此，正向过程被重新定义为非马尔可夫过程，直观展示如下图：
 ![non-markovian forward](./figs/diffusion-generalized.svg)
 
+#### Generative (Reverse) Process
+重新定义$q_{\sigma}(x_{t-1}\vert x_t,x_0)$后得到非马尔科夫前向过程，生成（逆向）过程通过模型$p_{\theta}^{(t)}(x_{t-1}\vert x_t)$来近似它，这点和DDPM的逻辑一致。与DDPM每个$t$步都要预测前向过程添加的噪音不同。
 
-#### Generative Process
+DDPM的生成过程中，在推导$q(x_{t-1}\vert x_t,x_0)$时候，得到均值是$\tilde{\mu}_t (\mathbf{x}_t, \mathbf{x}_0)= \frac{\sqrt{\alpha_t}(1 - \bar{\alpha}_{t-1})}{1 - \bar{\alpha}_t} \mathbf{x}_t + \frac{\sqrt{\bar{\alpha}_{t-1}}\beta_t}{1 - \bar{\alpha}_t} \mathbf{x}_0$，非常关键的一步是使用$\mathbf{x}_t = \sqrt{\bar{\alpha}_t}\mathbf{x}_0 + \sqrt{1 - \bar{\alpha}_t}\boldsymbol{\epsilon}$把$\mathbf{x}_0$给替换掉，因此推导出模型只需要预测噪音。但是在DDIM中，作者复用了DDPM的模型来估计$\hat x_{0}$:
+$$\hat{x}_0=  \frac{x_t -\sqrt{1- \bar{ \alpha}_t }  \ \hat{\epsilon}_t (x_t,t)}{ \sqrt{\bar{\alpha}_t }}:=f_{\theta}^{(t)}(x_t)
+$$
+把这个$\hat x_0$的公示带入到$q_{\sigma}(x_{t-1}\vert x_t,x_0)$的定义中去：
+$$
+\begin{align}\begin{aligned}p_{{\theta},\sigma}(x_{t-1}|x_t) &\sim \mathcal{N} \left(
+\sqrt{\bar{\alpha}_{t-1}} \ \hat{x}_0
++ \sqrt{1-\bar{\alpha}_{t-1}-\sigma_t^2} \cdot \frac{x_t - \sqrt{\bar{\alpha}_t} \ \hat{x}_0 }{\sqrt{1-\bar{\alpha}_t}}
+,\sigma_t^2 \textit{I}
+\right )\\&\approx  q_{\sigma}(x_{t-1}|x_t,x_0)\end{aligned}\end{align}
+$$
+逆向生成过程：
+$$
+\begin{split}p(x_{t-1}|x_t) = \left \{ \begin{array}{rcl}
+&\mathcal{N}(\hat{x}_0(x_1,t=1), \sigma^2_1 \textit{I} \ ) &if\quad t =1\\
+&q_{\sigma}(x_{t-1}|x_t,\hat{x}_0(x_t,t)) &if \quad 1 \lt t \le T
+\end{array} \right .\end{split}
+$$
+具体的采样公式：
+$$
+\begin{align}\begin{aligned}x_{t-1} &= \sqrt{\bar{\alpha}_{t-1}} \ \hat{x}_0
++ \sqrt{1-\bar{\alpha}_{t-1}-\sigma_t^2} \cdot \frac{x_t - \sqrt{\bar{\alpha}_t} \ \hat{x}_0 }{\sqrt{1-\bar{\alpha}_t}}
++ \sigma_t \epsilon_t^*\\&=\sqrt{\bar{\alpha}_{t-1}}  \underbrace{ \left (
+    \frac{x_t -\sqrt{1- \bar{ \alpha}_t }  \ \hat{\epsilon}_t (x_t,t)}{ \sqrt{\bar{\alpha}_t }  } \right )
+}_{\text{predict } x_0}
++ \underbrace{\sqrt{1-\bar{\alpha}_{t-1}-\sigma_t^2} \quad \hat{\epsilon}_t (x_t,t)}_{\text{direction pointing to }x_t}
+ + \underbrace{\sigma_t \epsilon_t^{*}}_{\text{random noise}}\\& \text{where}\quad \epsilon_t^{*} \sim \mathcal{N}(0,\textit{I})\end{aligned}\end{align}
+$$
+现在的逆向生成过程也不满足马尔科夫的假设了，至此DDIM定义了非马尔科夫的扩散过程。
+
+#### Accelerated Sampling
+铺垫到最后，到了DDIM加速采样，既然是非马尔科夫的生成过程，我们就可以跳步采样，极大的加速了生成的速度。
+
+
 
 ### LDM: Latent Variable Space
 
