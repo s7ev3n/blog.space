@@ -541,6 +541,8 @@ $$
 - DDIM: $x_{t-1}=\sqrt{\bar{\alpha}_{t-1}} \ \hat{x}_0 + \sqrt{1-\bar{\alpha}_{t-1}-\sigma_t^2} \cdot \epsilon_{\theta}(x_t,t)+\sigma_t \epsilon_t^{*}$，其中只依赖预测的$\hat x_0$和DDPM模型预测的$t$时刻的噪音。这个形式和前向过程的$\mathbf{x}_t = \sqrt{\bar{\alpha}_t}\mathbf{x}_0 + \sqrt{1 - \bar{\alpha}_t}\boldsymbol{\epsilon}$是非常类似的，即只要选择合适的噪音方向，通过估计的$\hat x_0$估计任意时刻的$x_t$，这打破了只依赖相邻上一步的限制，实现跳步的采样
 - DDIM这个采样过程可以形象的理解：可以将$\hat x_0$看做中转站，无论当前在哪个时间步$\tau_i$，我们都先尝试回到原点$\hat x_0$，再从原点出发，根据前向加噪音的逻辑，跳到任何我想想要的目标时间步$\tau_{i-1}$
 
+![DDIM accel](./figs/diffusion-figure-acc.svg)
+
 ### LDM: Latent Variable Space
 
 ### Conditioned Generation
