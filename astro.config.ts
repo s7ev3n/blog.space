@@ -15,6 +15,7 @@ import remarkDirective from "remark-directive"; /* Handle ::: directives as node
 import { remarkAdmonitions } from "./src/plugins/remark-admonitions"; /* Add admonitions */
 import { remarkReadingTime } from "./src/plugins/remark-reading-time";
 import remarkMath from 'remark-math';
+import { remarkMermaid } from "./src/plugins/remark-mermaid"; /* Add mermaid support */
 
 // Rehype plugins
 import rehypeExternalLinks from "rehype-external-links";
@@ -89,7 +90,7 @@ export default defineConfig({
 			rehypeUnwrapImages,
 			rehypeKatex,
 		],
-		remarkPlugins: [remarkReadingTime, remarkDirective, remarkAdmonitions, remarkMath],
+		remarkPlugins: [remarkReadingTime, remarkDirective, remarkAdmonitions, remarkMath, remarkMermaid],
 		remarkRehype: {
 			footnoteLabelProperties: {
 				className: [""],
