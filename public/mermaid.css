@@ -1,0 +1,56 @@
+/**
+ * mermaid.css
+ * Mermaid 图表样式定义
+ */
+
+/* 基础图表样式 */
+.mermaid {
+  margin: 2rem 0;
+  text-align: center;
+  overflow-x: auto;
+  padding: 1rem 0;
+  border-radius: 0.5rem;
+  max-width: 100%;
+}
+
+/* 图表标题样式 */
+.mermaid-caption {
+  text-align: center;
+  margin-top: 0.5rem;
+  font-style: italic;
+  opacity: 0.8;
+  font-size: 0.9rem;
+}
+
+/* 深色模式下的样式调整 */
+:root[data-theme="dark"] .mermaid svg {
+  filter: brightness(0.95);
+}
+
+/* 加载前的占位效果 */
+.mermaid:not([data-processed]) {
+  position: relative;
+  min-height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mermaid:not([data-processed])::after {
+  content: "图表加载中...";
+  font-style: italic;
+  color: #888;
+}
+
+/* 错误处理样式 */
+.mermaid svg[aria-roledescription="error"] {
+  display: none; /* 隐藏默认错误信息 */
+}
+
+.mermaid:has(svg[aria-roledescription="error"])::before {
+  content: "图表加载出错，请刷新页面";
+  font-style: italic;
+  color: #e44;
+  display: block;
+  padding: 1rem;
+}
