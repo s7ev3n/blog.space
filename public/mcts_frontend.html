@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCTS可视化演示</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .config-input {
+            @apply mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500;
+        }
+        .btn {
+            @apply px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75 disabled:opacity-50;
+        }
+        .btn-secondary {
+            @apply bg-teal-600 hover:bg-teal-700 focus:ring-teal-500;
+        }
+        .section-title {
+            @apply text-xl font-semibold text-gray-700 mb-2;
+        }
+
+        /* Visual Tree Styles - Top-Down Layout */
+        .tree-container { padding: 20px; border: 1px solid #e2e8f0; border-radius: 0.5rem; background-color: #f8fafc; overflow-x: auto; min-height: 150px; text-align: center; }
+        .tree, .tree ul, .tree li { list-style-type: none; margin: 0; padding: 0; position: relative; }
+        .tree { display: inline-block; }
+        .tree ul { padding-top: 30px; display: flex; justify-content: center; }
+        .tree li { display: flex; flex-direction: column; align-items: center; padding: 0 5px; }
+        .node-content { display: inline-block; padding: 8px 12px; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 0.375rem; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); font-size: 0.875rem; cursor: default; margin-bottom: 0; z-index: 1; position: relative; }
+        .node-content strong { color: #1e293b; }
+        .node-content .details { font-size: 0.75rem; color: #475569; margin-top: 2px; }
+        .node-content .state { font-weight: bold; }
+        .node-content .action { color: #0ea5e9; }
+        .node-content .node-id { font-size: 0.7rem; color: #64748b; display: block; margin-top:1px;}
+        .tree li > .node-content::after { content: ''; position: absolute; bottom: -15px; left: 50%; transform: translateX(-50%); width: 2px; height: 15px; background-color: #94a3b8; z-index: 0; }
+        .tree li:not(:has(>ul)) > .node-content::after { display: none; }
+        .tree > li > .node-content::before { display:none; }
+        .tree ul::before { content: ''; position: absolute; top: 0; height: 2px; background-color: #94a3b8; z-index: 0; left: 50%; width: 0; }
+        .tree ul:not(:has(>li:only-child))::before { left: 25%; width: 50%; }
+        .tree ul:has(> li + li)::before { left: 10%; right: 10%; width: auto; }
+        .tree ul > li > .node-content::before { content: ''; position: absolute; top: -15px; left: 50%; transform: translateX(-50%); width: 2px; height: 15px; background-color: #94a3b8; z-index: 0; }
+        .tree ul:empty::before { display: none; }
+
+        /* Style for the current game node in the game path tree */
+        .node-content.current-game-node {
+            background-color: #fde047; /* Tailwind yellow-300 */
+            border-color: #facc15; /* Tailwind yellow-400 */
+            color: #78350f; /* Tailwind amber-900 for text */
+        }
+        .node-content.current-game-node .action,
+        .node-content.current-game-node .node-id,
+        .node-content.current-game-node .details {
+            color: #78350f; /* Ensure text within details is also visible */
+        }
+
+
+        .log-area { background-color: #1f2937; color: #e5e7eb; font-family: monospace; padding: 1rem; border-radius: 0.5rem; max-height: 200px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; margin-top: 1rem; }
+        .iteration-step-output { font-family: monospace; white-space: pre-wrap; max-height: 500px; min-height: 400px; overflow-y: auto; background-color: #f9fafb; border: 1px solid #e5e7eb; }
+        .iteration-step-output h4 { @apply font-semibold text-md text-sky-700 mt-2 mb-1; }
+        .iteration-step-output p { @apply mb-1; }
+        .iteration-step-output ul { @apply list-disc list-inside pl-4 mb-2; }
+        .iteration-step-output li { @apply mb-0.5; }
+        .current-game-state { @apply mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-700 text-sm; }
+    </style>
+</head>
+<body class="bg-slate-100 p-4 md:p-8">
+    <div class="container mx-auto max-w-6xl bg-white p-6 rounded-xl shadow-lg">
+        <header class="mb-6 text-center">
+            <h1 class="text-3xl font-bold text-slate-800">MCTS过程可视化</h1>
+            <p class="text-slate-600">演示 MCTS 算法，可执行建议行动并追踪游戏进程。</p>
+        </header>
+
+        <section id="game-config" class="mb-6 p-4 border rounded-lg bg-slate-50">
+            <h2 class="section-title">游戏设置</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div><label for="target-number" class="block text-sm font-medium text-slate-700">目标数字:</label><input type="number" id="target-number" value="10" class="config-input"></div>
+                <div><label for="max-moves" class="block text-sm font-medium text-slate-700">最大步数:</label><input type="number" id="max-moves" value="7" class="config-input"></div>
+                <div><label for="actions" class="block text-sm font-medium text-slate-700">可选行动 (逗号分隔):</label><input type="text" id="actions" value="1,2,3" class="config-input"></div>
+            </div>
+            <button id="init-game-btn" class="btn mt-4 w-full md:w-auto">初始化游戏 / 重置MCTS树</button>
+        </section>
+
+        <section id="mcts-controls" class="mb-6 p-4 border rounded-lg bg-slate-50">
+            <h2 class="section-title">MCTS 控制</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                <div><label for="iterations" class="block text-sm font-medium text-slate-700">迭代次数 (批量):</label><input type="number" id="iterations" value="50" class="config-input"></div>
+                <button id="run-iterations-btn" class="btn w-full" disabled>运行批量迭代</button>
+            </div>
+            <div class="mt-4"><button id="run-single-iteration-btn" class="btn btn-secondary w-full" disabled>运行单步详细迭代</button></div>
+            <div class="mt-4"><button id="get-best-move-btn" class="btn bg-green-600 hover:bg-green-700 focus:ring-green-500 w-full" disabled>获取建议并执行行动</button></div>
+        </section>
+
+        <section id="status-display" class="mb-6">
+            <h2 class="section-title">状态与结果</h2>
+            <div id="current-game-state-display" class="current-game-state hidden">当前游戏状态将在此显示。</div>
+            <div id="status-message" class="p-3 mb-2 text-sm text-blue-700 bg-blue-100 rounded-lg" role="alert">请先初始化游戏。</div>
+            <div id="error-message" class="p-3 mb-2 text-sm text-red-700 bg-red-100 rounded-lg hidden" role="alert"></div>
+            <div id="best-move-result" class="p-3 text-sm text-green-700 bg-green-100 rounded-lg hidden"></div>
+        </section>
+        
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <section id="tree-visualization-section">
+                <h2 class="section-title">MCTS 搜索树 (可视化)</h2>
+                <div id="visual-tree-output" class="tree-container">MCTS 搜索树将在此显示...</div>
+                <details class="mt-2"><summary class="text-sm text-slate-600 cursor-pointer">显示/隐藏原始JSON数据</summary><div id="json-tree-output" class="log-area">原始JSON数据将在此显示...</div></details>
+            </section>
+            <section id="iteration-steps-section">
+                 <h2 class="section-title">MCTS 单步迭代详情</h2>
+                 <div id="iteration-step-output" class="iteration-step-output p-4 border rounded-lg bg-gray-50 text-sm">点击 "运行单步详细迭代" 来查看具体步骤。</div>
+            </section>
+        </div>
+        
+        <section id="game-state-tree-section" class="mt-6">
+            <h2 class="section-title">当前游戏路径树</h2>
+            <div id="game-state-tree-output" class="tree-container">游戏实际路径将在此显示...</div>
+        </section>
+
+        <footer class="mt-8 text-center text-sm text-slate-500"><p>MCTS 演示界面</p></footer>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://127.0.0.1:5000'; 
+
+        const initGameBtn = document.getElementById('init-game-btn');
+        const runIterationsBtn = document.getElementById('run-iterations-btn');
+        const runSingleIterationBtn = document.getElementById('run-single-iteration-btn');
+        const getBestMoveBtn = document.getElementById('get-best-move-btn');
+
+        const targetNumberInput = document.getElementById('target-number');
+        const maxMovesInput = document.getElementById('max-moves');
+        const actionsInput = document.getElementById('actions');
+        const iterationsInput = document.getElementById('iterations');
+
+        const statusMessageDiv = document.getElementById('status-message');
+        const errorMessageDiv = document.getElementById('error-message');
+        const bestMoveResultDiv = document.getElementById('best-move-result');
+        const currentGameStateDisplayDiv = document.getElementById('current-game-state-display');
+        
+        const visualTreeOutputDiv = document.getElementById('visual-tree-output');
+        const jsonTreeOutputDiv = document.getElementById('json-tree-output');
+        const iterationStepOutputDiv = document.getElementById('iteration-step-output');
+        const gameStateTreeOutputDiv = document.getElementById('game-state-tree-output'); // New div
+
+        let mctsActive = false; 
+
+        function updateCurrentGameStateDisplay(currentSum, movesTaken, isTerminal) {
+            if (currentSum !== undefined && movesTaken !== undefined) {
+                currentGameStateDisplayDiv.innerHTML = `<strong>当前游戏状态:</strong> 总和 = ${currentSum}, 已用步数 = ${movesTaken}.`;
+                if(isTerminal) { 
+                     currentGameStateDisplayDiv.innerHTML += ` <span class="font-bold text-red-600">游戏已结束!</span>`;
+                }
+                currentGameStateDisplayDiv.classList.remove('hidden');
+            } else {
+                currentGameStateDisplayDiv.classList.add('hidden');
+            }
+        }
+
+        function displayStatus(message, isError = false) {
+            errorMessageDiv.classList.add('hidden');
+            statusMessageDiv.classList.add('hidden');
+            if (isError) {
+                errorMessageDiv.textContent = message;
+                errorMessageDiv.classList.remove('hidden');
+            } else {
+                statusMessageDiv.textContent = message;
+                statusMessageDiv.classList.remove('hidden');
+            }
+            bestMoveResultDiv.classList.add('hidden');
+        }
+
+        function displayBestMoveSuggestion(data) { 
+            bestMoveResultDiv.classList.remove('hidden');
+            if (data.best_action !== null && data.best_action !== undefined) {
+                 bestMoveResultDiv.innerHTML = `<strong>MCTS 建议行动:</strong> ${data.best_action} (当前总和: ${data.current_sum}, 已用步数: ${data.moves_taken})<br>
+                                             <em>正在尝试执行此行动...</em>`;
+            } else {
+                 bestMoveResultDiv.textContent = data.message || "未能确定最佳行动。无法执行。";
+            }
+            statusMessageDiv.classList.add('hidden');
+            errorMessageDiv.classList.add('hidden');
+        }
+
+        function createNodeElement(nodeData) {
+            const nodeEl = document.createElement('div');
+            nodeEl.classList.add('node-content');
+            if (nodeData.is_current_game_node) {
+                nodeEl.classList.add('current-game-node');
+            }
+
+            let actionText = nodeData.action_from_parent !== null && nodeData.action_from_parent !== undefined ?
+                             `<span class="action">行动: ${nodeData.action_from_parent} &rarr; </span>` : '<strong>起始状态</strong> ';
+            
+            // Ensure nodeData.id is treated as a string for startsWith checks
+            const nodeIdStr = String(nodeData.id || ''); // Convert to string, default to empty if null/undefined
+
+            if (nodeIdStr.startsWith("game_path_") && nodeData.action_from_parent === null) {
+                 actionText = '<strong>游戏开始</strong> ';
+            } else if (nodeData.action_from_parent === null && !nodeIdStr.startsWith("game_path_")) { 
+                 actionText = '<strong>MCTS根节点</strong> ';
+            }
+
+
+            let stateText = 'N/A';
+            if (Array.isArray(nodeData.state)) { stateText = `(${nodeData.state.join(', ')})`; } 
+            else if (nodeData.state !== null && nodeData.state !== undefined) { stateText = `(${String(nodeData.state)})`;}
+            let nodeIdText = nodeData.id !== null && nodeData.id !== undefined ? `<span class="node-id">(ID: ${nodeIdStr})</span>` : ''; // Use nodeIdStr here too
+            
+            let detailsHtml = `<div class="details">`;
+            if (nodeData.visits !== "N/A") detailsHtml += `V: ${nodeData.value}, N: ${nodeData.visits}, AvgV: ${nodeData.avg_value}, UCB: ${nodeData.ucb_score_from_parent || 'N/A'}`;
+            else detailsHtml += `(游戏路径节点)`;
+            detailsHtml += ` ${nodeData.is_terminal ? '<span style="color: red;"> (终止)</span>' : ''}
+                             ${nodeData.is_fully_expanded === true ? '<span style="color: green;"> (全扩展)</span>' : ''}
+                             </div>`;
+
+
+            nodeEl.innerHTML = `
+                ${actionText} <span class="state">状态: ${stateText}</span> ${nodeIdText}
+                ${detailsHtml}`;
+            return nodeEl;
+        }
+
+        function buildVisualTreeRecursive(nodeData, parentUlElement) {
+            if (!nodeData) return;
+            const li = document.createElement('li');
+            li.appendChild(createNodeElement(nodeData));
+            parentUlElement.appendChild(li);
+            if (nodeData.displayed_children && nodeData.displayed_children.length > 0) {
+                const childUl = document.createElement('ul');
+                li.appendChild(childUl); 
+                nodeData.displayed_children.forEach(childNode => buildVisualTreeRecursive(childNode, childUl));
+            }
+        }
+        
+        function displayTree(treeData, targetDivElement, treeType = "mcts") {
+            targetDivElement.innerHTML = ''; 
+            if (treeData && Object.keys(treeData).length > 0) {
+                const rootTreeDiv = document.createElement('div');
+                rootTreeDiv.classList.add('tree');
+                const rootUl = document.createElement('ul'); 
+                buildVisualTreeRecursive(treeData, rootUl);
+                rootTreeDiv.appendChild(rootUl);
+                targetDivElement.appendChild(rootTreeDiv);
+            } else {
+                targetDivElement.textContent = treeType === "mcts" ? 'MCTS搜索树为空。' : '游戏路径为空。';
+            }
+            if (treeType === "mcts") {
+                jsonTreeOutputDiv.textContent = typeof treeData === 'object' ? JSON.stringify(treeData, null, 2) : (treeData || '无MCTS树原始JSON数据。');
+            }
+        }
+        
+        function displayIterationDetails(details) {
+            let html = `<h4>迭代 #${details.iteration_number} 详细步骤:</h4>`;
+            html += `<h4>1. 选择 (Selection)</h4>`;
+            if (details.selection) {
+                html += `<p>选择路径 (根节点 &rarr; ... &rarr; 目标节点):</p><ul>`;
+                details.selection.path.forEach(node => { html += `<li>节点 ID: ${node.id}, 状态: (${node.state.join(', ')}), V:${node.value}, N:${node.visits} ${node.id === details.selection.selected_node_id ? '<strong>&laquo; 已选择</strong>' : ''}</li>`; });
+                html += `</ul><p>最终选择的节点 ID: ${details.selection.selected_node_id}, 状态: (${details.selection.selected_node_state.join(', ')})</p>`;
+                html += `<p>该节点是否终止: ${details.selection.is_terminal ? '是' : '否'}, 是否已完全扩展: ${details.selection.is_fully_expanded ? '是' : '否'}</p>`;
+            }
+            html += `<h4>2. 扩展 (Expansion)</h4>`;
+            if (details.expansion) {
+                if (details.expansion.message) { html += `<p>${details.expansion.message}</p>`; } 
+                else if (details.expansion.error) { html += `<p style="color:red;">扩展错误: ${details.expansion.error}</p>`;}
+                else { html += `<p>从父节点 ID: ${details.expansion.parent_node_id} 扩展行动: ${details.expansion.action_taken}</p><p>创建新子节点 ID: ${details.expansion.new_child_node_id}, 状态: (${details.expansion.new_child_state.join(', ')})</p>`;}
+            }
+            html += `<h4>3. 模拟 (Simulation/Rollout)</h4>`;
+            if (details.simulation) {
+                html += `<p>从节点 ID: ${details.simulation.start_node_id} (状态: ${details.simulation.start_node_state.join(', ')}) 开始模拟</p><p>模拟路径:</p><ul>`;
+                details.simulation.rollout_path.forEach(step => {
+                    if(step.action_taken !== undefined) { html += `<li>状态: (${step.from_state.join(', ')}), 执行行动: ${step.action_taken}</li>`;} 
+                    else { html += `<li><strong>到达终止状态: (${step.terminal_state.join(', ')})</strong></li>`;}
+                });
+                html += `</ul><p><strong>模拟获得奖励: ${details.simulation.reward}</strong></p>`;
+            }
+            html += `<h4>4. 反向传播 (Backpropagation)</h4>`;
+            if (details.backpropagation) {
+                html += `<p>将奖励 ${details.backpropagation.reward_propagated} 从节点 ID: ${details.backpropagation.start_node_id} 开始反向传播</p><p>更新的节点路径:</p><ul>`;
+                details.backpropagation.updated_path.forEach(node => { html += `<li>节点 ID: ${node.node_id}, 状态: (${node.state.join(', ')}), 更新后 V: ${node.updated_value}, N: ${node.updated_visits}</li>`;});
+                html += `</ul>`;
+            }
+            iterationStepOutputDiv.innerHTML = html;
+            document.getElementById('iteration-steps-section').classList.remove('hidden');
+        }
+
+        async function executeMoveAndAdvanceTree(action) {
+            try {
+                displayStatus(`正在执行行动 ${action} 并更新树...`);
+                runIterationsBtn.disabled = true; runSingleIterationBtn.disabled = true; getBestMoveBtn.disabled = true;
+                const response = await fetch(`${API_BASE_URL}/apply_move`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: action })
+                });
+                if (!response.ok) { 
+                    let errorText = `应用行动失败。服务器状态: ${response.status} ${response.statusText}`;
+                    try { const errorData = await response.json(); if (errorData && errorData.error) { errorText = `服务器错误: ${errorData.error}`; }} 
+                    catch (e) { /* Ignore */ }
+                    throw new Error(errorText);
+                }
+                const result = await response.json(); 
+                displayStatus(result.message || `行动 ${action} 已成功执行。`);
+                displayTree(result.tree_root || {}, visualTreeOutputDiv, "mcts"); 
+                displayTree(result.game_path_tree || {}, gameStateTreeOutputDiv, "game_path"); 
+                updateCurrentGameStateDisplay(result.current_sum, result.moves_taken, result.is_terminal);
+                iterationStepOutputDiv.innerHTML = '树已推进到新状态。请运行新的迭代或获取下一个行动建议。';
+                bestMoveResultDiv.classList.add('hidden'); 
+                if (result.is_terminal) {
+                    mctsActive = false;
+                    displayStatus(`游戏结束！最终状态: (${result.new_root_state.join(', ')}). ${result.message}`, true); 
+                } else { mctsActive = true; }
+            } catch (error) {
+                console.error("Execute move error:", error);
+                let userMessage = `执行行动 ${action} 失败: ${error.message}.`;
+                if (error.message.toLowerCase().includes("failed to fetch")) { userMessage += ` 请检查后端服务连接。`;}
+                displayStatus(userMessage, true);
+                mctsActive = true; 
+            } finally {
+                runIterationsBtn.disabled = !mctsActive; runSingleIterationBtn.disabled = !mctsActive; getBestMoveBtn.disabled = !mctsActive;
+            }
+        }
+
+        initGameBtn.addEventListener('click', async () => {
+            const target = parseInt(targetNumberInput.value);
+            const maxMoves = parseInt(maxMovesInput.value);
+            const actionsStr = actionsInput.value.split(',').map(s => s.trim()).filter(s => s);
+            const actions = actionsStr.map(a => parseInt(a));
+            if (isNaN(target) || isNaN(maxMoves) || actions.some(isNaN) || actions.length === 0) { displayStatus("请输入有效的游戏设置参数。", true); return; }
+            try {
+                displayStatus("正在初始化游戏...");
+                const response = await fetch(`${API_BASE_URL}/init_game`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target, max_moves: maxMoves, actions })
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || `HTTP error! Status: ${response.status}`);
+                displayStatus(data.message || "游戏已初始化。");
+                displayTree(data.tree_root || {}, visualTreeOutputDiv, "mcts");
+                displayTree(data.game_path_tree || {}, gameStateTreeOutputDiv, "game_path"); 
+                updateCurrentGameStateDisplay(data.initial_state[0], data.initial_state[1], data.is_initial_terminal); 
+                mctsActive = true;
+                runIterationsBtn.disabled = false; runSingleIterationBtn.disabled = false; getBestMoveBtn.disabled = false;
+                iterationStepOutputDiv.innerHTML = '点击 "运行单步详细迭代" 来查看具体步骤。'; 
+                document.getElementById('iteration-steps-section').classList.remove('hidden');
+            } catch (error) {
+                console.error("Init game error:", error);
+                let userMessage = `初始化游戏失败: ${error.message}.`;
+                if (error instanceof TypeError && error.message.toLowerCase().includes("failed to fetch")) { userMessage += ` 请检查您的网络连接。`;}
+                displayStatus(userMessage, true);
+                mctsActive = false;
+                runIterationsBtn.disabled = true; runSingleIterationBtn.disabled = true; getBestMoveBtn.disabled = true;
+                currentGameStateDisplayDiv.classList.add('hidden');
+                gameStateTreeOutputDiv.innerHTML = '游戏路径将在此显示...'; 
+            }
+        });
+
+        runIterationsBtn.addEventListener('click', async () => {
+            const iterations = parseInt(iterationsInput.value);
+            if (isNaN(iterations) || iterations <= 0) { displayStatus("请输入有效的批量迭代次数。", true); return; }
+            try {
+                displayStatus(`正在运行 ${iterations} 次批量 MCTS 迭代...`);
+                runIterationsBtn.disabled = true; runSingleIterationBtn.disabled = true; getBestMoveBtn.disabled = true;
+                const response = await fetch(`${API_BASE_URL}/run_mcts_iterations`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ iterations })
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || `HTTP error! Status: ${response.status}`);
+                displayStatus(data.message || `${iterations} 次批量迭代完成。`);
+                displayTree(data.tree_root || {}, visualTreeOutputDiv, "mcts");
+            } catch (error) {
+                console.error("Batch iterations error:", error);
+                let userMessage = `批量迭代失败: ${error.message}.`;
+                if (error instanceof TypeError && error.message.toLowerCase().includes("failed to fetch")) { userMessage += ` 请检查后端服务连接。`;}
+                displayStatus(userMessage, true);
+            } finally {
+                if (mctsActive) { runIterationsBtn.disabled = false; runSingleIterationBtn.disabled = false; getBestMoveBtn.disabled = false;}
+            }
+        });
+        
+        runSingleIterationBtn.addEventListener('click', async () => {
+            try {
+                displayStatus("正在运行单步详细 MCTS 迭代...");
+                runIterationsBtn.disabled = true; runSingleIterationBtn.disabled = true; getBestMoveBtn.disabled = true;
+                const response = await fetch(`${API_BASE_URL}/run_single_iteration_detailed`, { method: 'POST' });
+                if (!response.ok) { 
+                    let errorText = `HTTP error! Status: ${response.status} ${response.statusText}`;
+                    try { const errorData = await response.json(); if (errorData && errorData.error) { errorText = `服务器错误: ${errorData.error}`; }} 
+                    catch (e) { try { const plainErrorText = await response.text(); if(plainErrorText) errorText = `服务器响应了非预期的内容 (状态 ${response.status}). 详情请查看控制台。`; console.error("Non-JSON error response from server:", plainErrorText); } catch (textErr) { console.error("Failed to get text from error response:", textErr);}}
+                    throw new Error(errorText);
+                }
+                const contentType = response.headers.get("content-type");
+                if (contentType && contentType.indexOf("application/json") !== -1) {
+                    const data = await response.json();
+                    displayStatus(data.message || "单步详细迭代完成。");
+                    displayTree(data.tree_root || {}, visualTreeOutputDiv, "mcts");
+                    if (data.detailed_steps) { displayIterationDetails(data.detailed_steps); } 
+                    else { iterationStepOutputDiv.innerHTML = '<p style="color:orange;">后端未返回详细步骤信息。</p>';}
+                } else {
+                    const textResponse = await response.text();
+                    console.error("Received non-JSON response from /run_single_iteration_detailed (Status OK):", textResponse.substring(0, 500));
+                    throw new Error(`服务器响应了非JSON内容 (状态 ${response.status}).`);
+                }
+            } catch (error) {
+                console.error("Single iteration detail error (full object):", error); 
+                let userMessage = `单步详细迭代失败: ${error.message}.`;
+                if (error instanceof TypeError || (error.message && error.message.toLowerCase().includes("failed to fetch"))) { userMessage += ` 请检查您的网络连接。`;}
+                displayStatus(userMessage, true);
+                iterationStepOutputDiv.innerHTML = `<p style="color:red;">获取单步详情失败: ${error.message}</p>`;
+            } finally {
+                if(mctsActive) {runIterationsBtn.disabled = false; runSingleIterationBtn.disabled = false; getBestMoveBtn.disabled = false;}
+            }
+        });
+
+        getBestMoveBtn.addEventListener('click', async () => {
+            try {
+                displayStatus("正在获取最佳行动建议...");
+                getBestMoveBtn.disabled = true; runIterationsBtn.disabled = true; runSingleIterationBtn.disabled = true;
+                const response = await fetch(`${API_BASE_URL}/get_best_move`);
+                if (!response.ok) { 
+                    let errorText = `HTTP error! Status: ${response.status} ${response.statusText}`;
+                    try{ const errorData = await response.json(); if(errorData && errorData.error) errorText = `服务器错误: ${errorData.error}`;}
+                    catch(e){ try {const plainErrorText = await response.text(); if(plainErrorText) errorText = `服务器响应了非预期的内容 (状态 ${response.status}).`; console.error("Non-JSON error response from server:", plainErrorText);} catch(textErr){}}
+                    throw new Error(errorText);
+                }
+                const data = await response.json();
+                if (data.best_action !== null && data.best_action !== undefined) {
+                    displayBestMoveSuggestion(data); 
+                    await executeMoveAndAdvanceTree(data.best_action); 
+                } else {
+                    displayBestMoveSuggestion(data); 
+                    if(mctsActive) {runIterationsBtn.disabled = false; runSingleIterationBtn.disabled = false; getBestMoveBtn.disabled = false;}
+                }
+            } catch (error) {
+                console.error("Get best move error:", error);
+                let userMessage = `获取最佳行动失败: ${error.message}.`;
+                if (error instanceof TypeError && error.message.toLowerCase().includes("failed to fetch")) { userMessage += ` 请检查后端服务连接。`;}
+                displayStatus(userMessage, true);
+                 if(mctsActive) {runIterationsBtn.disabled = false; runSingleIterationBtn.disabled = false; getBestMoveBtn.disabled = false;}
+            } 
+        });
+
+        displayStatus("请确保 Python Flask 后端服务已启动，然后配置游戏参数并点击 '初始化游戏'。");
+        displayTree({}, visualTreeOutputDiv, "mcts"); 
+        displayTree({}, gameStateTreeOutputDiv, "game_path"); 
+        updateCurrentGameStateDisplay(undefined, undefined, false); 
+        iterationStepOutputDiv.innerHTML = '点击 "运行单步详细迭代" 来查看具体步骤。';
+        document.getElementById('iteration-steps-section').classList.remove('hidden');
+        document.getElementById('game-state-tree-section').classList.remove('hidden'); 
+    </script>
+</body>
+</html>
