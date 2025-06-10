@@ -3,7 +3,7 @@ title: Monte Carlo Tree Search
 description: mcts
 publishDate: "4 May 2025"
 updatedDate: "4 May 2025"
-tags: ["tech/ml"]
+tags: ["tech/gems"]
 ---
 
 ## Monte Carlo Tree Search
