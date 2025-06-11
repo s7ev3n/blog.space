@@ -71,19 +71,40 @@ $$
 #### Action-Value Function
 动作价值函数$Q_{\pi}(s, a)$，即经常见到的$Q$函数，描述了在给定状态$s$下采取某个动作$a$的好坏，这个好坏是通过代表未来累积奖励的回报$U_t$的期望来进行评价的:
 $$
-Q_{\pi}(s, a)=\mathbb{E}(U_t \vert S_t=s_t, A_t=a_t)
+Q_{\pi}(s, a)=\mathbb{E}_{\pi}(U_t \vert S_t=s, A_t=a)
 $$
 
 为什么是期望呢？因为未来（$t+1$时刻之后）可能采取的动作和进入的状态都是随机变量，但是我们通过求期望，即通过概率加权求和或积分消掉未来的随机变量，从而大体知道可以预期的平均回报是多少。
 
-$Q$函数依赖策略函数$\pi(a \vert s)$和状态转移函数$p(\cdot \vert s, a)$。
+> Keep in mind 期望$\mathbb{E}$的公式是概率求和，要关注公式中随机变量和它的概率分布！
+
+**贝尔曼期望方程 (Bellman Expectation Equation) 以递归的形式定义了$Q_{\pi}(s, a)$**:
+$$
+\begin{aligned}
+    Q_{\pi}(s, a)&= \mathbb{E}_{\pi}[R_t + \gamma U_{t+1} \vert S_t=s, A_t=a] \\
+    &=\mathbb{E}_{\pi}[R_{t}+\gamma Q_{\pi}(S_{t+1}, A_{t+1}) \vert s,a] \\
+    &=\mathbb{E}_{\pi}[R_{t}\vert s,a]+\gamma\mathbb{E}_{\pi}[Q_{\pi}(S_{t+1}, A_{t+1}) \vert s,a]  \\
+    &=r_t+\gamma \sum_{s_{t+1}}p(s_{t+1}\vert s,a)\sum_{a_{t+1}\in A_{t+1}}\pi(a_{t+1}\vert s_{t+1})Q_{\pi}(s_{t+1},a_{t+1}) \\
+    &=\mathbb{E}_{s_{t+1}\sim p(s_{t+1} \vert s,a)}[r_t+\gamma V_{\pi}(s_{t+1})]
+\end{aligned}
+$$
+其中，$p(\cdot \vert s, a)$是状态转移函数。
 
 #### State-Value Function
 状态价值函数$V_{\pi}$衡量给定策略$\pi$，当前状态的好坏，相当于对动作价值函数$Q$，进一步积分掉所有的动作$A$：
 $$
-V_{\pi}=\mathbb{E}_{A\sim \pi(\cdot \vert s_t)}\big[Q_{\pi}(s_t, A) \big]=\int_{\mathcal{A}} \pi(a\vert s_t) \cdot Q_{\pi}(s_t,a) \, da
+\begin{aligned}
+    V_{\pi}(s)&=\mathbb{E}_{\pi}[U_t\vert S_t=s] \\
+    &=\mathbb{E}_{A\sim \pi(\cdot \vert s)}\big[Q_{\pi}(s, A) \big] \\
+    &=\sum_{a\in A} \pi(a\vert s) \cdot Q_{\pi}(s,a)
+\end{aligned}
 $$
 状态价值函数描述了给定策略$\pi$现在所处的状态的好坏，不管采取什么动作。
+
+**$V_{\pi}(s)$的贝尔曼期望方程:**
+$$
+V_{\pi}(s)=\mathbb{E}_{\pi}[R_{t}+\gamma V_{\pi}(S_{t+1})| S_t=s]
+$$
 
 #### Optimal Value Functions
 **最佳动作价值函数(Optimal action-value function)：** $Q^*(s, a)$表示在策略函数$\pi$和状态$s$下采取动作$a$的最大预期回报： 
@@ -111,6 +132,33 @@ $$
 
 RL算法的目标是最大化未来累积回报，可以看到，如果已知最优价值函数或最优策略，都可以实现RL这一目标，因此RL算法主要分为Value-based和Policy-based的方法。
 
+#### Advantage Function
+优势函数（Advantage Function） 是一个核心概念，用于衡量在特定状态$s$下选择某个动作$a$相对于该状态下平均动作价值的好坏程度。其数学定义为：
+$$
+A^{\pi}(s,a)=Q^{\pi}(s,a)-V^{\pi}(s)
+$$
+
+直观的理解是“状态$s$下，动作$a$比平均水平（$V^{\pi}(s)$）好多少”。优势函数可以有效减少方差，因此广泛应用在PPO等算法中。
+
+如何估计Advantage Function?
+
+1. 蒙特卡洛MC估计
+
+    用跑完一个完整回合的单条轨迹的累积回报作为$Q(s,a)$的估计，这条轨迹是一次无偏采样，但是蒙特卡洛算法估计的$Q(s,a)$存在方差高的问题，减去$V(s_t)$可以有效的降低方差：
+    $$
+    A^{\pi}(s_t,a_t)=\sum_{k=t}^{T}\gamma^{k-t}r_k - V^{\pi}(s_t)
+    $$
+    其中的$V(s_t)$可以由一个价值网络来估计。
+2. [时序差分(Temporal Difference, TD)](#temporal-difference)估计
+
+    TD相比MC方法跑完一个整个回合，是一种边走边学，用“猜测”更新“猜测”的方法，它在一个回合的过程中，获得真实的reward，然后马上更新之前旧的预测。利用Q函数的贝尔曼公式：
+    $$
+    A^{\pi}(s_t,a_t)=\mathbb{E}_{s_{t+1}}[r_t+\gamma V_{\pi}(s_{t+1})]-V^{\pi}(s_t)
+    $$
+
+3. 广义优势函数估计(Generalized Advantage Estimation, GAE)
+
+TD误差是对优势函数的无偏估计。
 ## Policy-based Method
 Policy-based方法，例如Policy Gradient，是直接建模策略函数$\pi(a\vert s; \theta)$来实现最大化未来累积回报的预期：
 $$
