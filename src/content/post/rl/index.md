@@ -85,14 +85,14 @@ $$
     &=\mathbb{E}_{\pi}[R_{t}+\gamma Q_{\pi}(S_{t+1}, A_{t+1}) \vert s,a] \\
     &=\mathbb{E}_{\pi}[R_{t}\vert s,a]+\gamma\mathbb{E}_{\pi}[Q_{\pi}(S_{t+1}, A_{t+1}) \vert s,a]  \\
     &=\sum_{s_{t+1}}p(s_{t+1}\vert s,a)\cdot r_t+\gamma \sum_{s_{t+1}}p(s_{t+1}\vert s,a)\sum_{a_{t+1}\in A_{t+1}}\pi(a_{t+1}\vert s_{t+1})Q_{\pi}(s_{t+1},a_{t+1}) \\
-    &=\mathbb{E}_{s_{t+1}\sim p(s_{t+1} \vert s,a)}[r_t+\gamma V_{\pi}(s_{t+1})]
+    &=\mathbb{E}_{s_{t+1}\sim (\cdot \vert s,a)}[R_t(s,a,s_{t+1})+\gamma V_{\pi}(s_{t+1})]
 \end{aligned}
 $$
-其中，$p(\cdot \vert s, a)$是状态转移函数。
+其中，$p(\cdot \vert s, a)$是状态转移函数，在给定状态$s$和动作$a$的情况下，转移到下一个状态$s'$的概率分布。
 
-注意，$Q_{\pi}(S_{t+1}, A_{t+1})$和$Q_{\pi}(s, a)$是完全不同的，大写字母表示这是一个随机变量，因此需要分别拆分这两个随机变量进行推导。
+注意，$Q_{\pi}(S_{t+1}, A_{t+1})$和$Q_{\pi}(s, a)$是完全不同的，大写字母表示这是一个随机变量，随机变量的特定取值对应着概率。公式中有两个随机变量$S_{t+1}$和$A_{t+1}$，因此展开$Q_{\pi}(S_{t+1}, A_{t+1})$先固定一个随机变量$S_{t+1}$通过状态转移函数，再对采样出的状态$s_{t+1}$下的所有$a_{t+1}$求和。
 
-这是一个比较重要的推导（推导过程需要很小心），后面估计优势函数时会直接用到这个结论。
+**这是一个比较重要的推导（推导过程需要很小心），[后面估计优势函数](#advantage-function)时会直接用到这个结论。**
 
 #### State-Value Function
 状态价值函数$V_{\pi}$衡量给定策略$\pi$，当前状态的好坏，相当于对动作价值函数$Q$，进一步积分掉所有的动作$A$：
@@ -157,12 +157,61 @@ $$
 
     TD相比MC方法跑完一个整个回合，是一种边走边学，用“猜测”更新“猜测”的方法，它在一个回合的过程中，获得真实的reward，然后马上更新之前旧的预测。利用Q函数的贝尔曼公式：
     $$
-    A_{\pi}(s_t,a_t)=\mathbb{E}_{s_{t+1}}[r_t+\gamma V_{\pi}(s_{t+1})]-V_{\pi}(s_t)
+    A_{\pi}(s_t,a_t)=\mathbb{E}_{s_{t+1}}[R_t+\gamma V_{\pi}(s_{t+1})]-V_{\pi}(s_t)
     $$
+    TD误差的定义是：
+    $$
+    \delta_t=R_t+\gamma V_{\pi}(s_{t+1})-V_{\pi}(s_t)
+    $$
+    取条件期望：
+    $$
+    \mathbb{E}_{s_{t+1}}[\delta_t]=\mathbb{E}_{s_{t+1}}[R_t+\gamma V_{\pi}(s_{t+1})]-\mathbb{E}_{s_{t+1}}[V_{\pi}(s_{t})]
+    $$
+    由于$V_{\pi}(s_t)$在TD的语境下，此时是常数：
+    $$
+    \mathbb{E}_{s_{t+1}}[\delta_t]=\mathbb{E}_{s_{t+1}}[R_t+\gamma V_{\pi}(s_{t+1})]-V_{\pi}(s_{t})=A_{\pi}(s_t,a_t)
+    $$
+    通常使用单步TD估计，即走一步来估计优势函数，并且使用网络来估计$V_{\phi}(s)$来估计$V_{\pi}(s)$函数即：
+    $$
+    \hat A^{(1)}_{t} = (r_t + \gamma V_{\phi}(s_{t+1}))-V_{\phi}(s_t)
+    $$
+    这是一个有偏估计，非常依赖$V_{\phi}(s)$估计的准确性。
+3. **广义优势函数估计(Generalized Advantage Estimation, GAE)**
 
-3. 广义优势函数估计(Generalized Advantage Estimation, GAE)
+    对比单步TD，GAE是加权的$k$步估计，是目前最常用的且效果最好的优势函数估计，应用在PPO算法中。
+    $$
+    \begin{aligned}
+        \hat{A_t^{(1)}} &= r_t + \gamma V(s_{t+1}) - V(s_t) = \delta_t
+        \\
+        \hat{A_t^{(2)}} &= r_t + \gamma r_{t+1} +\gamma^2 V(s_{t+2}) - V(s_t) = \delta_t+\gamma\delta_{t+1}
+        \\
+        \hat{A_t^{(k)}} &= r_t + \gamma r_{t+1} +\gamma^2 r_{t+2} + \cdots + \gamma^{k} V(s_{t+k}) - V(s_t) = \delta_t+\gamma\delta_{t+1} + \cdots + \gamma^{k-1}\delta_{t+k-1}
+        \\
+        ...
+        \\
+        \hat{A_t^{(\infty)}} &= r_t + \gamma r_{t+1} +\gamma^2 r_{t+2} + ... - V(s_t)
+    \end{aligned}
+    $$
+    $\hat{A_t^{(1)}}$的偏差高，方差低，即TD；$\hat{A_t^{(\infty)}}$偏差低，方差高，即MC。上述公式通过TD Error可得$\hat{A_t^{(k)}}=\sum_{l=0}^{k-1}\gamma^{l}\delta_{t+l}$，后续将使用TD Error继续推导。
 
-TD误差是对优势函数的无偏估计。
+    GAE通过引入参数$\lambda \in [0,1]$，并对$\hat{A_t^{(k)}}$进行加权平均：
+    $$
+    \hat{A_t} = \hat{A}_t^{GAE} = (1-\lambda)(\hat{A_t}^{(1)}+ \lambda\hat{A_t}^{(2)}+\cdots)=(1-\lambda)\sum_{k=1}^{\infin}\lambda^{k-1}\hat{A_t}^{(k)}
+    $$
+    $\lambda$的取值比较接近于$1$，可以看到$\hat{A_t}^{(1)}$因为偏差比较大，所以对整体估计的贡献是比较少的，而越往后，估计的步数多的贡献越大，起到平衡平衡偏差和方差的作用。
+    
+    > 为什么使用$\sum_{k=1}^{\infin}(1-\lambda)\lambda^{k-1}$? 因为它的和为1，可以自己展开公式推导一下。
+    
+    使用TD Error $\delta$来表示，并推导得到最终形式：
+    $$
+    \hat{A}_t^{GAE} = \sum_{l=0}^{\infin}(\gamma\lambda)^l\delta_{t+l}
+    $$
+    递归形式：
+    $$
+    \hat{A}_t^{GAE} = \delta_t+\gamma\delta\hat{A}_{t+1}^{GAE}
+    $$
+    和前面的TD类似，通过使用网络$V_{\phi}(s)$来估计状态价值函数，再来计算GAE。
+
 ## Policy-based Method
 Policy-based方法，例如Policy Gradient，是直接建模策略函数$\pi(a\vert s; \theta)$来实现最大化未来累积回报的预期：
 $$
@@ -451,6 +500,8 @@ $$
         &= r_t + \gamma \cdot \underset{a}{\text{max}}Q(s_{t+1}, a; \mathbf{w_t})
 \end{aligned}
 $$
+通常称Prediction和Target的差为TD error $\delta$，即$\delta_t=Q(s_{t},a_{t};\mathbf{w_t})-y_t$。
+
 损失函数即为：
 $$
 L = \frac{1}{2}[Q(s_{t},a_{t};\mathbf{w_t})-y_t]^2
