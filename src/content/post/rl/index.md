@@ -1,12 +1,12 @@
 ---
-title: "Introduction to RL"
+title: "A Long introduction to RL"
 description: "reinforcement learning concept and algos"
 publishDate: "3 April 2025"
 tags: ["tech/rl"]
 draft: false
 ---
 
-> 拾起Reinforcement Learning的基础概念和算法。
+> 拾起Reinforcement Learning的基础概念和算法，参考[A (Long) Peek into Reinforcement Learning](https://lilianweng.github.io/posts/2018-02-19-rl-overview)
 
 ## Terminology
 > 强化学习中有很多的术语和概念，初学时经常被搞得很懵逼，所以先从术语开始，把基础的概念理解好。
@@ -69,21 +69,46 @@ $$
 **价值函数**同样也是RL中最重要的概念之一，主要有动作-价值函数，以及状态-价值函数，两者有密切关系。
 **两个价值函数都是由策略函数Policy控制的期望，期望就是对未来回报的平均预期**，比喻来说就是Agent的“经验”。
 #### Action-Value Function
-动作价值函数$Q_{\pi}(s, a)$，即经常见到的$Q$函数，描述了在给定状态$s$下采取某个动作$a$的好坏，这个好坏是通过代表未来累积奖励的回报$U_t$的期望来进行评价的:
+动作价值函数$Q_{\pi}(s, a)$，即经常见到的$Q$函数，描述了在给定状态$s$下采取某个动作$a$的好坏，这个好坏是通过代表未来累积奖励的回报$U_t$的**期望**来进行评价的:
 $$
-Q_{\pi}(s, a)=\mathbb{E}(U_t \vert S_t=s_t, A_t=a_t)
+Q_{\pi}(s, a)=\mathbb{E}_{\pi}(U_t \vert S_t=s, A_t=a)
 $$
 
-为什么是期望呢？因为未来（$t+1$时刻之后）可能采取的动作和进入的状态都是随机变量，但是我们通过求期望，即通过概率加权求和或积分消掉未来的随机变量，从而大体知道可以预期的平均回报是多少。
+为什么是期望呢？因为未来（$t+1$时刻之后）可能采取的动作（由策略函数$\pi(a\vert s)$控制）和进入的状态（由状态转移函数控制）都是概率饿分布，通过求期望，即通过概率加权求和或积分消掉未来的随机性，从而大体知道可以预期的平均回报是多少。
 
-$Q$函数依赖策略函数$\pi(a \vert s)$和状态转移函数$p(\cdot \vert s, a)$。
+> Keep in mind 期望$\mathbb{E}$的本质是概率加权和，因此看到求期望的公式就要关注公式中随机变量和它的概率分布！
+
+**贝尔曼期望方程 (Bellman Expectation Equation) 以递归的形式定义了$Q_{\pi}(s, a)$**:
+$$
+\begin{aligned}
+    Q_{\pi}(s, a)&= \mathbb{E}_{\pi}[R_t + \gamma U_{t+1} \vert S_t=s, A_t=a] \\
+    &=\mathbb{E}_{\pi}[R_{t}+\gamma Q_{\pi}(S_{t+1}, A_{t+1}) \vert s,a] \\
+    &=\mathbb{E}_{\pi}[R_{t}\vert s,a]+\gamma\mathbb{E}_{\pi}[Q_{\pi}(S_{t+1}, A_{t+1}) \vert s,a]  \\
+    &=\sum_{s_{t+1}}p(s_{t+1}\vert s,a)\cdot r_t+\gamma \sum_{s_{t+1}}p(s_{t+1}\vert s,a)\sum_{a_{t+1}\in A_{t+1}}\pi(a_{t+1}\vert s_{t+1})Q_{\pi}(s_{t+1},a_{t+1}) \\
+    &=\mathbb{E}_{s_{t+1}\sim (\cdot \vert s,a)}[R_t(s,a,s_{t+1})+\gamma V_{\pi}(s_{t+1})]
+\end{aligned}
+$$
+其中，$p(\cdot \vert s, a)$是状态转移函数，在给定状态$s$和动作$a$的情况下，转移到下一个状态$s'$的概率分布。
+
+注意，$Q_{\pi}(S_{t+1}, A_{t+1})$和$Q_{\pi}(s, a)$是完全不同的，大写字母表示这是一个随机变量，随机变量的特定取值对应着概率。公式中有两个随机变量$S_{t+1}$和$A_{t+1}$，因此展开$Q_{\pi}(S_{t+1}, A_{t+1})$先固定一个随机变量$S_{t+1}$通过状态转移函数，再对采样出的状态$s_{t+1}$下的所有$a_{t+1}$求和。
+
+**这是一个比较重要的推导（推导过程需要很小心），[后面估计优势函数](#advantage-function)时会直接用到这个结论。**
 
 #### State-Value Function
 状态价值函数$V_{\pi}$衡量给定策略$\pi$，当前状态的好坏，相当于对动作价值函数$Q$，进一步积分掉所有的动作$A$：
 $$
-V_{\pi}=\mathbb{E}_{A\sim \pi(\cdot \vert s_t)}\big[Q_{\pi}(s_t, A) \big]=\int_{\mathcal{A}} \pi(a\vert s_t) \cdot Q_{\pi}(s_t,a) \, da
+\begin{aligned}
+    V_{\pi}(s)&=\mathbb{E}_{\pi}[U_t\vert S_t=s] \\
+    &=\mathbb{E}_{A\sim \pi(\cdot \vert s)}\big[Q_{\pi}(s, A) \big] \\
+    &=\sum_{a\in A} \pi(a\vert s) \cdot Q_{\pi}(s,a)
+\end{aligned}
 $$
 状态价值函数描述了给定策略$\pi$现在所处的状态的好坏，不管采取什么动作。
+
+**$V_{\pi}(s)$的贝尔曼期望方程:**
+$$
+V_{\pi}(s)=\mathbb{E}_{\pi}[R_{t}+\gamma V_{\pi}(S_{t+1})| S_t=s]
+$$
 
 #### Optimal Value Functions
 **最佳动作价值函数(Optimal action-value function)：** $Q^*(s, a)$表示在策略函数$\pi$和状态$s$下采取动作$a$的最大预期回报： 
@@ -110,6 +135,82 @@ $$
 3. **最优策略一定实现最优动作价值函数，$Q_{\pi^*}(s,a) \geq Q^*(s,a), \forall \pi$**
 
 RL算法的目标是最大化未来累积回报，可以看到，如果已知最优价值函数或最优策略，都可以实现RL这一目标，因此RL算法主要分为Value-based和Policy-based的方法。
+
+#### Advantage Function
+优势函数（Advantage Function）用于衡量在特定状态$s$下选择某个动作$a$相对于该状态下平均动作价值的好坏程度。其数学定义为：
+$$
+A_{\pi}(s,a)=Q_{\pi}(s,a)-V_{\pi}(s)
+$$
+
+直观的理解是“状态$s$下，动作$a$比平均水平（$V_{\pi}(s)$）好多少”。优势函数可以有效减少方差，因此广泛应用在PPO等算法中。
+
+**如何估计Advantage Function?通常都是使用Rollout出去的数据来估计$Q$函数，然后用神经网络来估计V函数**
+
+1. 蒙特卡洛MC估计
+
+    用跑完一个完整回合的单条轨迹的累积回报作为$Q(s,a)$的估计，这条轨迹是一次无偏采样，但是蒙特卡洛算法估计的$Q(s,a)$存在方差高的问题，减去$V(s_t)$可以有效的降低方差：
+    $$
+    A_{\pi}(s_t,a_t)=\sum_{k=t}^{T}\gamma^{k-t}r_k - V_{\pi}(s_t)
+    $$
+    其中的$V(s_t)$可以由一个价值网络来估计。
+2. [时序差分(Temporal Difference, TD)](#temporal-difference)估计
+
+    TD相比MC方法跑完一个整个回合，是一种边走边学，用“猜测”更新“猜测”的方法，它在一个回合的过程中，获得真实的reward，然后马上更新之前旧的预测。利用Q函数的贝尔曼公式：
+    $$
+    A_{\pi}(s_t,a_t)=\mathbb{E}_{s_{t+1}}[R_t+\gamma V_{\pi}(s_{t+1})]-V_{\pi}(s_t)
+    $$
+    TD误差的定义是：
+    $$
+    \delta_t=R_t+\gamma V_{\pi}(s_{t+1})-V_{\pi}(s_t)
+    $$
+    取条件期望：
+    $$
+    \mathbb{E}_{s_{t+1}}[\delta_t]=\mathbb{E}_{s_{t+1}}[R_t+\gamma V_{\pi}(s_{t+1})]-\mathbb{E}_{s_{t+1}}[V_{\pi}(s_{t})]
+    $$
+    由于$V_{\pi}(s_t)$在TD的语境下，此时是常数：
+    $$
+    \mathbb{E}_{s_{t+1}}[\delta_t]=\mathbb{E}_{s_{t+1}}[R_t+\gamma V_{\pi}(s_{t+1})]-V_{\pi}(s_{t})=A_{\pi}(s_t,a_t)
+    $$
+    通常使用单步TD估计，即走一步来估计优势函数，并且使用网络来估计$V_{\phi}(s)$来估计$V_{\pi}(s)$函数即：
+    $$
+    \hat A^{(1)}_{t} = (r_t + \gamma V_{\phi}(s_{t+1}))-V_{\phi}(s_t)
+    $$
+    这是一个有偏估计，非常依赖$V_{\phi}(s)$估计的准确性。
+3. **广义优势函数估计(Generalized Advantage Estimation, GAE)**
+
+    对比单步TD，GAE是加权的$k$步估计，是目前最常用的且效果最好的优势函数估计，应用在PPO算法中。
+    $$
+    \begin{aligned}
+        \hat{A_t^{(1)}} &= r_t + \gamma V(s_{t+1}) - V(s_t) = \delta_t
+        \\
+        \hat{A_t^{(2)}} &= r_t + \gamma r_{t+1} +\gamma^2 V(s_{t+2}) - V(s_t) = \delta_t+\gamma\delta_{t+1}
+        \\
+        \hat{A_t^{(k)}} &= r_t + \gamma r_{t+1} +\gamma^2 r_{t+2} + \cdots + \gamma^{k} V(s_{t+k}) - V(s_t) = \delta_t+\gamma\delta_{t+1} + \cdots + \gamma^{k-1}\delta_{t+k-1}
+        \\
+        ...
+        \\
+        \hat{A_t^{(\infty)}} &= r_t + \gamma r_{t+1} +\gamma^2 r_{t+2} + ... - V(s_t)
+    \end{aligned}
+    $$
+    $\hat{A_t^{(1)}}$的偏差高，方差低，即TD；$\hat{A_t^{(\infty)}}$偏差低，方差高，即MC。上述公式通过TD Error可得$\hat{A_t^{(k)}}=\sum_{l=0}^{k-1}\gamma^{l}\delta_{t+l}$，后续将使用TD Error继续推导。
+
+    GAE通过引入参数$\lambda \in [0,1]$，并对$\hat{A_t^{(k)}}$进行加权平均：
+    $$
+    \hat{A_t} = \hat{A}_t^{GAE} = (1-\lambda)(\hat{A_t}^{(1)}+ \lambda\hat{A_t}^{(2)}+\cdots)=(1-\lambda)\sum_{k=1}^{\infin}\lambda^{k-1}\hat{A_t}^{(k)}
+    $$
+    $\lambda$的取值比较接近于$1$，可以看到$\hat{A_t}^{(1)}$因为偏差比较大，所以对整体估计的贡献是比较少的，而越往后，估计的步数多的贡献越大，起到平衡平衡偏差和方差的作用。
+    
+    > 为什么使用$\sum_{k=1}^{\infin}(1-\lambda)\lambda^{k-1}$? 因为它的和为1，可以自己展开公式推导一下。
+    
+    使用TD Error $\delta$来表示，并推导得到最终形式：
+    $$
+    \hat{A}_t^{GAE} = \sum_{l=0}^{\infin}(\gamma\lambda)^l\delta_{t+l}
+    $$
+    递归形式：
+    $$
+    \hat{A}_t^{GAE} = \delta_t+\gamma\delta\hat{A}_{t+1}^{GAE}
+    $$
+    和前面的TD类似，通过使用网络$V_{\phi}(s)$来估计状态价值函数，再来计算GAE。
 
 ## Policy-based Method
 Policy-based方法，例如Policy Gradient，是直接建模策略函数$\pi(a\vert s; \theta)$来实现最大化未来累积回报的预期：
@@ -399,6 +500,8 @@ $$
         &= r_t + \gamma \cdot \underset{a}{\text{max}}Q(s_{t+1}, a; \mathbf{w_t})
 \end{aligned}
 $$
+通常称Prediction和Target的差为TD error $\delta$，即$\delta_t=Q(s_{t},a_{t};\mathbf{w_t})-y_t$。
+
 损失函数即为：
 $$
 L = \frac{1}{2}[Q(s_{t},a_{t};\mathbf{w_t})-y_t]^2
