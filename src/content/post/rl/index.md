@@ -1,12 +1,12 @@
 ---
-title: "Introduction to RL"
+title: "A Long introduction to RL"
 description: "reinforcement learning concept and algos"
 publishDate: "3 April 2025"
 tags: ["tech/rl"]
 draft: false
 ---
 
-> 拾起Reinforcement Learning的基础概念和算法。
+> 拾起Reinforcement Learning的基础概念和算法，参考[A (Long) Peek into Reinforcement Learning](https://lilianweng.github.io/posts/2018-02-19-rl-overview)
 
 ## Terminology
 > 强化学习中有很多的术语和概念，初学时经常被搞得很懵逼，所以先从术语开始，把基础的概念理解好。
@@ -69,14 +69,14 @@ $$
 **价值函数**同样也是RL中最重要的概念之一，主要有动作-价值函数，以及状态-价值函数，两者有密切关系。
 **两个价值函数都是由策略函数Policy控制的期望，期望就是对未来回报的平均预期**，比喻来说就是Agent的“经验”。
 #### Action-Value Function
-动作价值函数$Q_{\pi}(s, a)$，即经常见到的$Q$函数，描述了在给定状态$s$下采取某个动作$a$的好坏，这个好坏是通过代表未来累积奖励的回报$U_t$的期望来进行评价的:
+动作价值函数$Q_{\pi}(s, a)$，即经常见到的$Q$函数，描述了在给定状态$s$下采取某个动作$a$的好坏，这个好坏是通过代表未来累积奖励的回报$U_t$的**期望**来进行评价的:
 $$
 Q_{\pi}(s, a)=\mathbb{E}_{\pi}(U_t \vert S_t=s, A_t=a)
 $$
 
-为什么是期望呢？因为未来（$t+1$时刻之后）可能采取的动作和进入的状态都是随机变量，但是我们通过求期望，即通过概率加权求和或积分消掉未来的随机变量，从而大体知道可以预期的平均回报是多少。
+为什么是期望呢？因为未来（$t+1$时刻之后）可能采取的动作（由策略函数$\pi(a\vert s)$控制）和进入的状态（由状态转移函数控制）都是概率饿分布，通过求期望，即通过概率加权求和或积分消掉未来的随机性，从而大体知道可以预期的平均回报是多少。
 
-> Keep in mind 期望$\mathbb{E}$的公式是概率求和，要关注公式中随机变量和它的概率分布！
+> Keep in mind 期望$\mathbb{E}$的本质是概率加权和，因此看到求期望的公式就要关注公式中随机变量和它的概率分布！
 
 **贝尔曼期望方程 (Bellman Expectation Equation) 以递归的形式定义了$Q_{\pi}(s, a)$**:
 $$
@@ -84,11 +84,15 @@ $$
     Q_{\pi}(s, a)&= \mathbb{E}_{\pi}[R_t + \gamma U_{t+1} \vert S_t=s, A_t=a] \\
     &=\mathbb{E}_{\pi}[R_{t}+\gamma Q_{\pi}(S_{t+1}, A_{t+1}) \vert s,a] \\
     &=\mathbb{E}_{\pi}[R_{t}\vert s,a]+\gamma\mathbb{E}_{\pi}[Q_{\pi}(S_{t+1}, A_{t+1}) \vert s,a]  \\
-    &=r_t+\gamma \sum_{s_{t+1}}p(s_{t+1}\vert s,a)\sum_{a_{t+1}\in A_{t+1}}\pi(a_{t+1}\vert s_{t+1})Q_{\pi}(s_{t+1},a_{t+1}) \\
+    &=\sum_{s_{t+1}}p(s_{t+1}\vert s,a)\cdot r_t+\gamma \sum_{s_{t+1}}p(s_{t+1}\vert s,a)\sum_{a_{t+1}\in A_{t+1}}\pi(a_{t+1}\vert s_{t+1})Q_{\pi}(s_{t+1},a_{t+1}) \\
     &=\mathbb{E}_{s_{t+1}\sim p(s_{t+1} \vert s,a)}[r_t+\gamma V_{\pi}(s_{t+1})]
 \end{aligned}
 $$
 其中，$p(\cdot \vert s, a)$是状态转移函数。
+
+注意，$Q_{\pi}(S_{t+1}, A_{t+1})$和$Q_{\pi}(s, a)$是完全不同的，大写字母表示这是一个随机变量，因此需要分别拆分这两个随机变量进行推导。
+
+这是一个比较重要的推导（推导过程需要很小心），后面估计优势函数时会直接用到这个结论。
 
 #### State-Value Function
 状态价值函数$V_{\pi}$衡量给定策略$\pi$，当前状态的好坏，相当于对动作价值函数$Q$，进一步积分掉所有的动作$A$：
@@ -133,27 +137,27 @@ $$
 RL算法的目标是最大化未来累积回报，可以看到，如果已知最优价值函数或最优策略，都可以实现RL这一目标，因此RL算法主要分为Value-based和Policy-based的方法。
 
 #### Advantage Function
-优势函数（Advantage Function） 是一个核心概念，用于衡量在特定状态$s$下选择某个动作$a$相对于该状态下平均动作价值的好坏程度。其数学定义为：
+优势函数（Advantage Function）用于衡量在特定状态$s$下选择某个动作$a$相对于该状态下平均动作价值的好坏程度。其数学定义为：
 $$
-A^{\pi}(s,a)=Q^{\pi}(s,a)-V^{\pi}(s)
+A_{\pi}(s,a)=Q_{\pi}(s,a)-V_{\pi}(s)
 $$
 
-直观的理解是“状态$s$下，动作$a$比平均水平（$V^{\pi}(s)$）好多少”。优势函数可以有效减少方差，因此广泛应用在PPO等算法中。
+直观的理解是“状态$s$下，动作$a$比平均水平（$V_{\pi}(s)$）好多少”。优势函数可以有效减少方差，因此广泛应用在PPO等算法中。
 
-如何估计Advantage Function?
+**如何估计Advantage Function?通常都是使用Rollout出去的数据来估计$Q$函数，然后用神经网络来估计V函数**
 
 1. 蒙特卡洛MC估计
 
     用跑完一个完整回合的单条轨迹的累积回报作为$Q(s,a)$的估计，这条轨迹是一次无偏采样，但是蒙特卡洛算法估计的$Q(s,a)$存在方差高的问题，减去$V(s_t)$可以有效的降低方差：
     $$
-    A^{\pi}(s_t,a_t)=\sum_{k=t}^{T}\gamma^{k-t}r_k - V^{\pi}(s_t)
+    A_{\pi}(s_t,a_t)=\sum_{k=t}^{T}\gamma^{k-t}r_k - V_{\pi}(s_t)
     $$
     其中的$V(s_t)$可以由一个价值网络来估计。
 2. [时序差分(Temporal Difference, TD)](#temporal-difference)估计
 
     TD相比MC方法跑完一个整个回合，是一种边走边学，用“猜测”更新“猜测”的方法，它在一个回合的过程中，获得真实的reward，然后马上更新之前旧的预测。利用Q函数的贝尔曼公式：
     $$
-    A^{\pi}(s_t,a_t)=\mathbb{E}_{s_{t+1}}[r_t+\gamma V_{\pi}(s_{t+1})]-V^{\pi}(s_t)
+    A_{\pi}(s_t,a_t)=\mathbb{E}_{s_{t+1}}[r_t+\gamma V_{\pi}(s_{t+1})]-V_{\pi}(s_t)
     $$
 
 3. 广义优势函数估计(Generalized Advantage Estimation, GAE)
