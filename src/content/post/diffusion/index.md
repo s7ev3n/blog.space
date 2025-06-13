@@ -543,12 +543,77 @@ $$
 
 ![DDIM accel](./figs/diffusion-figure-acc.svg)
 
-### LDM: Latent Variable Space
-
 ### Conditioned Generation
+扩散模型在生成图片时，输入一个随机噪音，逐步去噪，但是每一步都是随机的，最终生成的图片的多样性是很好的，但是不可控，无法控制生成的过程。因此，有工作[^5]引入额外的信息引导生成过程(条件生成)，这个额外的条件信息$y$可以是文本、图片或者类别标签，如果需要单独训练一个分类器，称之为classifier guidance diffusion，如果不需要训练分类器，称为classifier-free guidance，也是更常见的做法，OpenAI和DALLE-2和Google的Imagen都是。
+
+> 条件扩散模型的前向过程与非条件扩散模型的前向过程完全一样，这个直觉上也比较好理解。
+
+[^5]: [Diffusion Models Beat GANs on Image Synthesis](https://arxiv.org/abs/2105.05233)
+
+#### Classifier guidance
+在生成(去噪)过程中，添加额外的条件信息$y$之后的联合概率为：
+$$
+p(x_{0:T} |y) = p(x_{T} ) \prod_{t=1}^T p_{\theta}(x_{t−1}|x_{t},y)
+$$
+
+我们知道扩散模型有三种等价的形式：1) 预测原始数据$x_0$, 2) 预测前向过程的噪声$\epsilon_t$，3)预测评分函数Score，$\hat{s}_{\theta}(x_t,t,y)=\nabla_{x_t}\log p(x_t \vert y)$。
+使用评分函数的推导更简洁，因此从这个角度展开：
+$$
+\begin{align}\begin{aligned}\nabla_{x_t} \log p(x_t|y) &= \nabla_{x_t} \log \left( \frac{p(x_t)p(y|x_t)}{p(y)} \right) \quad \text{via Bayes rule}\\
+&= \nabla_{x_t} \log p(x_t) + \nabla_{x_t}  \log p(y|x_t)
+ - \underbrace{\nabla_{x_t}  \log p(y)}_{\text{与 }x_t\text{无关，为0}  }\\
+&= \underbrace{\nabla_{x_t} \log p(x_t)}_\text{unconditional score}
++ \underbrace{\nabla_{x_t} \log p(y|x_t)}_\text{adversarial gradient}\end{aligned}\end{align}
+$$
+
+可以看到，有条件评分函数是无条件评分函数和对抗梯度，而$p(y|x_t)$是一个分类器$f_{\theta}(y\vert x_t)$，即从噪音样本$x_t$预测类别。
+
+**这个分类器需要在训练条件扩散模型之前，独立的训练好**。当然此分类训练过程中，需要用扩散模型的前向加噪过程得到的$x_t$作为分类器的输入。这也是classifer guidance的缺点，即需要对原始数据加不同程度的噪音制作分类数据集并训练，极大增加了成本。
+
+分类器$f_{\theta}(y\vert x_t)$的梯度会引导采样(生成)过程想着类别标签前进，生成符合标签的图像。引入classifer guidance后，使得图像生成更可控，但也会降低多样性，并且标签也不是很灵活。
+
+最后，为了控制分类器梯度的影响，论文中引入了一个权重$\lambda$:
+$$
+\nabla_{x_t} \log p(x_t|y)  = \nabla_{x_t} \log p(x_t) +\lambda \nabla_{x_t} \log p(y|x_t)
+$$
+
+生成（采样）过程：
+1. 提前训练好分类器$f_{\theta}(y\vert x_t)$
+2. `for t in 非条件扩散`
+   1. 计算评分函数$\hat{s}_{\theta}(x_t, t)$
+   2. 把$x_t$输入到分类器$f_{\theta}(y\vert x_t)$，并计算$\nabla_{x_t} \log f_{\theta}(y|x_t)$
+   3. 计算$\hat{s}_{\theta}(x_t,t,y) = \hat{s}_{\theta}(x_t,t) + \nabla_{x_t} \log f_{\theta}(y|x_t)$
+
+#### Classifier-free guidance
+提前训练一个分类器的缺点还是非常明显的：1）增加额外的训练和采样计算的成本；2）分类器的类别也不够灵活，不利于更精细的生成控制，例如根据文本生成图像。所以，目前的主流是Classifier-free方式，即去掉这个分类器进行条件生成。只要对原始的方程中，替换掉分类器的梯度即可：
+$$
+\begin{split}\nabla_{x_t} \log p(x_t|y)
+&= \nabla_{x_t} \log p(x_t) + \gamma\left(\nabla_{x_t} \log p(x_t|y) - \nabla\log p(x_t)\right)\\
+&= \nabla_{x_t} \log p(x_t) + \gamma\nabla\log p(x_t|y) - \gamma\nabla_{x_t} \log p(x_t)\\
+&= \underbrace{\gamma\nabla_{x_t} \log p(x_t|y)}_\text{conditional score}
++ \underbrace{(1 - \gamma)\nabla_{x_t} \log p(x_t)}_\text{unconditional score}\end{split}
+$$
+
+即，通过有条件的评分函数和无条件的评分函数的线性插值，同样可以进行条件生成。
+
+**可以使用同一个模型、同时训练有条件和无条件的生成模型。训练需要数据对$(\mathbf{x}, y)$，在训练过程中，以一定概率随机将$y$置空，此时学习的是无条件生成，$y$不为空，则学习的是有条件生成，两者共享模型参数，通过$y$来切换。这个方式训练更成本更大，但是效果更好，更灵活($y$可以是任意条件信息)，更可控。**
+
+### LDM: Latent Variable Space
 
 ### Stable Diffusion
 
 ### DiT: Diffusion Transformer
 
-## Score-based Diffusion Model
+## Score-based Generative Model
+Score-based model是Song Yang[6]提出的基于评分函数的生成模型，它和Diffusion model是等价的。可以参考Song Yang的talk[^7]和博客[^8]来学习。
+
+[^6]: [Generative modeling by estimating gradients of the data distribution](https://arxiv.org/abs/1907.05600)
+[^7]: [Diffusion and Score-Based Generative Models](https://www.youtube.com/watch?v=wMmqCMwuM2Q&list=LL&index=8&t=1160s)
+[^8]: [Generative Modeling by Estimating Gradients of the Data Distribution](https://yang-song.net/blog/2021/score/)
+
+### Score function
+一个概率分布的评分函数Score function定义为：
+$$
+\nabla_\mathbf{x} \log p(\mathbf{x})
+$$
+需要注意的是：是对数据$\mathbf{x}$求梯度，而**不是**概率分布的参数进行的求导。
