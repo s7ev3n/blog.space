@@ -8,6 +8,7 @@ tags: ["tech/research", "tech/adas"]
 > 持续记录端到端自动驾驶的论文和认识。
 
 ## Insights
+- [2025.06]Waymo的论文Scaling Laws of Motion Forecasting and Planning[^3]中使用了非常惊人的5000000小时的数据进行了IL的训练，远远超过开源数据集的训练量，模型的能力持续提升。IL中的OOD问题，是不是因为训练数据的投入远远不够？像LLM范式中的**Heavy** IL + RL finetune是否能在AI Planning中同样成功？
 - [2025.03]当前绝大部分的E2E AD都采用了模仿学习(Imitation Learning, IL)，即使用大量的人类驾驶数据为监督学习驾驶行为，使用IL学习需要闭环反馈的驾驶行为存在很多问题。比较少数使用Model Based IL来同时学习World Model和Driving Policy[^1]。采用IL的模型普遍会遇到比较严重的泛化问题。
 - Wang Naiyan在知乎回答 [^2] 中对IL E2E问题的分析 
     <details>
@@ -30,6 +31,11 @@ tags: ["tech/research", "tech/adas"]
 
 [^1]: [Model-based imitation learning for urban driving](https://arxiv.org/abs/2210.07729)
 [^2]: [Imitation Learning or not?](https://zhuanlan.zhihu.com/p/721582016?utm_id=0)
-
+[^3]: [Scaling Laws of Motion Forecasting and Planning](https://arxiv.org/pdf/2506.08228)
 
 ## Lit Review
+
+- [Trajeglish: Traffic Modeling as Next-Token Prediction](https://arxiv.org/abs/2312.04535)
+  - TL;DR: Trajeglish对所有Agent运动状态的相对转移进行聚类得到了Motion Vocabulary，这样轨迹就可以离散为Token的序列。Motion Vocabulary成为后续工作SMART的离散化方法。
+- [MotionLM: Multi-Agent Motion Forecasting as Language Modeling](https://arxiv.org/abs/2309.16534)
+  - TL;DR: MotionLM同样是使用NTP来构建所有Agent的运动，它采用的是x和y轴均匀的离散化方法。
