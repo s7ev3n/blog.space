@@ -74,6 +74,8 @@ tags: ["tech/research", "tech/adas"]
 - [MotionLM: Multi-Agent Motion Forecasting as Language Modeling](https://arxiv.org/abs/2309.16534)
   - TL;DR: MotionLM同样是使用NTP来构建所有Agent的运动，它采用的是x和y轴均匀的离散化方法。
 - [SMART: Scalable Multi-agent Real-time Simulation via Next-token Prediction](https://arxiv.org/abs/2405.15677)
+    - tl;dr SMART对交通的所有要素进行了离散化，包括所有Agents的状态、地图的所有多段线(Polyline)，以及我们要预测的所有Agent的轨迹，轨迹离散化采用的时Trajeglish的方式，0.5s的轨迹点。
+      - SMART论文中的网络结构示意图时Transformer Decoder，但是代码实现上采用的时图网络(PyG)，构建了Agent时序，Agent和Map，Agent和Agent的时空Graph，然后巧妙将Transformer的基本操作全部嵌入其中。
 - [Closed-Loop Supervised Fine-Tuning of Tokenized Traffic Models](https://arxiv.org/abs/2412.05334)
   - CAT-K基于SMART进行了所谓的“闭环有监督微调”，(我认为)主要针对的是在Covariance Shift的问题，即Policy在进行序列预测时，会随着时间和误差的累计逐渐越错越大，所以也叫CAT-K Rollout。
   - SMART的Next token prediction训练如果从预测轨迹序列角度来看，可以看作是Teacher Forcing，即给定真值进行预测，而不是自回归预测，模型因此无法从错误的预测中恢复。
