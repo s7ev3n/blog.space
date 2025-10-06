@@ -442,11 +442,18 @@ $$
 - 如果$d > d_{\text{target}} \times 1.5 \rightarrow \beta=\beta \times 2$
 
 #### PPO CLIP
-$\text{PPO}^{CLIP}$对Trust Region的进行了简化，通过控制重要性采样比率控制更新的补偿。令重要性采样比率为$r(\theta)=\frac{\pi(a;\theta)}{\pi(a;\theta_{\text{old}})}$，对$r(\theta)$进行截断，并选择最小（“悲观”）的那一项：
+$\text{PPO}^{CLIP}$对Trust Region的进行了简化，通过控制重要性采样比率控制更新的补偿，是更常见的目标函数，论文的实验中也有更好的表现。令重要性采样比率为$r(\theta)=\frac{\pi(a;\theta)}{\pi(a;\theta_{\text{old}})}$，对$r(\theta)$进行截断，并选择最小（“悲观”）的那一项：
 $$
 L^{CLIP}(\theta)=\mathbb{E}[\text{min}(r(\theta)A_{\pi_{\text{old}}}(s,a), \text{clip}(r(\theta), 1-\epsilon, 1+\epsilon))A_{\pi_{\text{old}}}(s,a)]
 $$
-$\text{PPO}^{CLIP}$是更常见的目标函数，论文的实验中也有更好的表现。
+其中的$r(\theta)=\frac{\pi(a;\theta)}{\pi(a;\theta_{\text{old}})}$是很重要的概念：当$r(\theta)>1$时，说明模型对这个动作的概率更大，反之模型对这个动作的概率更小。
+
+PPO CLIP函数非常的有巧思，也有一些绕！有$A_{\pi_{\text{old}}}(s,a)>0$和$A_{\pi_{\text{old}}}(s,a)<0$两种不同的情况：
+
+- 当$A_{\pi_{\text{old}}}(s,a)>0$时，这个动作高于平均水平，因此希望增加这个动作出现的概率，对应上面的$r(\theta)>1$，即希望模型的梯度更新向着$r(\theta)$增大的方向。我们看$L^{CLIP}$损失函数是不是有相同的趋势：当$A_{\pi_{\text{old}}}(s,a)>0$，$L^{CLIP}$是正的损失值，产生正的梯度值，最大化损失函数$L^{CLIP}$即在鼓励$r(\theta)$增大。且把损失值限制在一个范围内$\hat A(1-\epsilon, 1+\epsilon)$，主要比避免$r(\theta)$太大，模型盲目自信。
+- <strong style="color: red;">超出$\hat A(1-\epsilon, 1+\epsilon)$时，取值是$\hat A(1-/+\epsilon)$，它其实相对于$\theta$是常量，没有任何的梯度！即完全阻断了了梯度更新。</strong>
+- 当$A_{\pi_{\text{old}}}(s,a)<0$时，那这个动作低于平均水平，不是一个好动作，因此希望降低这个动作出现的概率，即希望$r(\theta)<1$，且越小越好。从损失函数来看，由于$A_{\pi_{\text{old}}}(s,a)<0$，$L^{CLIP}$是负数，最大化损失函数$L^{CLIP}$负的越小越好，即越接近0越好，而$r(\theta)$越小$\hat A r(\theta)$越大；另一角度看，产生的梯度值为负，参数更新会向着$r(\theta)$减小的方向。但是，为了避免过度惩罚，即$r(\theta)$是非常小的数字，例如$r(\theta)=0.1$，$L^{CLIP}$的$min$函数虽然会选择更小的$(1-\epsilon)\hat A$，但是这个值是常量，因此完全不更新参数，由此限制模型过度的惩罚。
+- 另外要注意的是，$A_{\pi_{\text{old}}}(s,a)$在此处是一个标量值，没有梯度值，你可以认为这是一个权重，但是它会影响梯度的大小，进而影响训练稳定性，因此需要标准化。在实现的细节当中，$A$会使用当前采集的Buffer或一个Mini-Batch的经验数据Normalize，使其具有均值为0，方差为1：$\hat{A}_t^{\text{norm}} = \frac{\hat{A}_t - \mu(\hat{A})}{\sigma(\hat{A}) + \epsilon_{\text{small}}}$
 
 PPO论文作者在第5节中提到，很多方法会使用一个网络来估计advantage函数中的$V_{\pi}(s)$，如果policy网络和value网络共享参数，需要增加价值函数项$L^{VF}$和熵奖励项(Entropy Bonus)$S$，写作：
 $$
