@@ -76,16 +76,16 @@ $$
 Q_{\pi}(s, a)=\mathbb{E}_{\pi}(U_t \vert S_t=s, A_t=a)
 $$
 
-为什么是期望呢？因为未来（$t+1$时刻之后）可能采取的动作（由策略函数$\pi(a\vert s)$控制）和进入的状态（由状态转移函数控制）都是概率饿分布，通过求期望，即通过概率加权求和或积分消掉未来的随机性，从而大体知道可以预期的平均回报是多少。
+为什么是期望呢？因为未来可能采取的动作（由策略函数$\pi(a\vert s)$控制）和进入的状态（由状态转移函数控制）都是随机的，通过求期望，即通过概率加权求和或积分消掉未来的随机性，从而大体知道可以预期的平均回报是多少。
 
 > Keep in mind 期望$\mathbb{E}$的本质是概率加权和，因此看到求期望的公式就要关注公式中随机变量和它的概率分布！
 
 **贝尔曼期望方程 (Bellman Expectation Equation) 以递归的形式定义了$Q_{\pi}(s, a)$**:
 $$
 \begin{aligned}
-    Q_{\pi}(s, a)&= \mathbb{E}_{\pi}[R_t + \gamma U_{t+1} \vert S_t=s, A_t=a] \\
-    &=\mathbb{E}_{\pi}[R_{t}+\gamma Q_{\pi}(S_{t+1}, A_{t+1}) \vert s,a] \\
-    &=\mathbb{E}_{\pi}[R_{t}\vert s,a]+\gamma\mathbb{E}_{\pi}[Q_{\pi}(S_{t+1}, A_{t+1}) \vert s,a]  \\
+    Q_{\pi}(s, a)&= \mathbb{E}_{\pi}[R_{t+1} + \gamma U_{t+1} \vert S_t=s, A_t=a] \\
+    &=\mathbb{E}_{\pi}[R_{t+1}+\gamma Q_{\pi}(S_{t+1}, A_{t+1}) \vert s,a] \\
+    &=\mathbb{E}_{\pi}[R_{t+1}\vert s,a]+\gamma\mathbb{E}_{\pi}[Q_{\pi}(S_{t+1}, A_{t+1}) \vert s,a]  \\
     &=\sum_{s_{t+1}}p(s_{t+1}\vert s,a)\cdot r_t+\gamma \sum_{s_{t+1}}p(s_{t+1}\vert s,a)\sum_{a_{t+1}\in A_{t+1}}\pi(a_{t+1}\vert s_{t+1})Q_{\pi}(s_{t+1},a_{t+1}) \\
     &=\mathbb{E}_{s_{t+1}\sim (\cdot \vert s,a)}[R_t(s,a,s_{t+1})+\gamma V_{\pi}(s_{t+1})]
 \end{aligned}
@@ -159,23 +159,23 @@ $$
 
     TD相比MC方法跑完一个整个回合，是一种边走边学，用“猜测”更新“猜测”的方法，它在一个回合的过程中，获得真实的reward，然后马上更新之前旧的预测。利用Q函数的贝尔曼公式：
     $$
-    A_{\pi}(s_t,a_t)=\mathbb{E}_{s_{t+1}}[R_t+\gamma V_{\pi}(s_{t+1})]-V_{\pi}(s_t)
+    A_{\pi}(s_t,a_t)=\mathbb{E}_{s_{t+1}}[R_{t+1}+\gamma V_{\pi}(s_{t+1})]-V_{\pi}(s_t)
     $$
     TD误差的定义是：
     $$
-    \delta_t=R_t+\gamma V_{\pi}(s_{t+1})-V_{\pi}(s_t)
+    \delta_t=R_{t+1}+\gamma V_{\pi}(s_{t+1})-V_{\pi}(s_t)
     $$
     取条件期望：
     $$
-    \mathbb{E}_{s_{t+1}}[\delta_t]=\mathbb{E}_{s_{t+1}}[R_t+\gamma V_{\pi}(s_{t+1})]-\mathbb{E}_{s_{t+1}}[V_{\pi}(s_{t})]
+    \mathbb{E}_{s_{t+1}}[\delta_t]=\mathbb{E}_{s_{t+1}}[R_{t+1}+\gamma V_{\pi}(s_{t+1})]-\mathbb{E}_{s_{t+1}}[V_{\pi}(s_{t})]
     $$
     由于$V_{\pi}(s_t)$在TD的语境下，此时是常数：
     $$
-    \mathbb{E}_{s_{t+1}}[\delta_t]=\mathbb{E}_{s_{t+1}}[R_t+\gamma V_{\pi}(s_{t+1})]-V_{\pi}(s_{t})=A_{\pi}(s_t,a_t)
+    \mathbb{E}_{s_{t+1}}[\delta_t]=\mathbb{E}_{s_{t+1}}[R_{t+1}+\gamma V_{\pi}(s_{t+1})]-V_{\pi}(s_{t})=A_{\pi}(s_t,a_t)
     $$
     通常使用单步TD估计，即走一步来估计优势函数，并且使用网络来估计$V_{\phi}(s)$来估计$V_{\pi}(s)$函数即：
     $$
-    \hat A^{(1)}_{t} = (r_t + \gamma V_{\phi}(s_{t+1}))-V_{\phi}(s_t)
+    \hat A^{(1)}_{t} = (r_{t+1} + \gamma V_{\phi}(s_{t+1}))-V_{\phi}(s_t)
     $$
     这是一个有偏估计，非常依赖$V_{\phi}(s)$估计的准确性。
 3. **广义优势函数估计(Generalized Advantage Estimation, GAE)**
@@ -183,15 +183,15 @@ $$
     对比单步TD，GAE是加权的$k$步估计，是目前最常用的且效果最好的优势函数估计，应用在PPO算法中。
     $$
     \begin{aligned}
-        \hat{A_t^{(1)}} &= r_t + \gamma V(s_{t+1}) - V(s_t) = \delta_t
+        \hat{A_t^{(1)}} &= r_{t+1} + \gamma V(s_{t+1}) - V(s_t) = \delta_t
         \\
-        \hat{A_t^{(2)}} &= r_t + \gamma r_{t+1} +\gamma^2 V(s_{t+2}) - V(s_t) = \delta_t+\gamma\delta_{t+1}
+        \hat{A_t^{(2)}} &= r_{t+1} + \gamma r_{t+1} +\gamma^2 V(s_{t+2}) - V(s_t) = \delta_t+\gamma\delta_{t+1}
         \\
-        \hat{A_t^{(k)}} &= r_t + \gamma r_{t+1} +\gamma^2 r_{t+2} + \cdots + \gamma^{k} V(s_{t+k}) - V(s_t) = \delta_t+\gamma\delta_{t+1} + \cdots + \gamma^{k-1}\delta_{t+k-1}
+        \hat{A_t^{(k)}} &= r_{t+1} + \gamma r_{t+1} +\gamma^2 r_{t+2} + \cdots + \gamma^{k} V(s_{t+k}) - V(s_t) = \delta_t+\gamma\delta_{t+1} + \cdots + \gamma^{k-1}\delta_{t+k-1}
         \\
         ...
         \\
-        \hat{A_t^{(\infty)}} &= r_t + \gamma r_{t+1} +\gamma^2 r_{t+2} + ... - V(s_t)
+        \hat{A_t^{(\infty)}} &= r_{t+1} + \gamma r_{t+1} +\gamma^2 r_{t+2} + ... - V(s_t)
     \end{aligned}
     $$
     $\hat{A_t^{(1)}}$的偏差高，方差低，即TD；$\hat{A_t^{(\infty)}}$偏差低，方差高，即MC。上述公式通过TD Error可得$\hat{A_t^{(k)}}=\sum_{l=0}^{k-1}\gamma^{l}\delta_{t+l}$，后续将使用TD Error继续推导。
@@ -492,21 +492,21 @@ RL是时序决策框架，通常以一个片段(episode)为基础，即一定会
 
 能不能在片段没有结束之前进行更新模型参数呢？可以，因为经过了某些步数之后，获得了这部分奖励的真值，可以使用这部分的真值来更新最初的预测，即每一步都修正之前的预测，每一步都更新模型的参数。
 
-回报$U_t$包含一定的递归属性：$U_t=R_t + \gamma R_{t+1} + \gamma^2 R_{t+2} + \gamma^3 R_{t+3} + \cdots=R_t + \gamma U_{t+1}$。
+回报$U_t$包含一定的递归属性：$U_t=R_{t+1} + \gamma R_{t+1} + \gamma^2 R_{t+2} + \gamma^3 R_{t+3} + \cdots=R_{t+1} + \gamma U_{t+1}$。
 
 把上面关于$U_t$的递归方程应用在DQN中：
 $$
-\underbrace{Q(s_t,a;\mathbf{w})}_{\text{Estimate of }U_t} \approx \mathbb{E}[r_t+\gamma\cdot \underbrace{Q(S_{t+1}, A_{t+1}; \mathbf{w})]}_{\text{Estimate of }U_{t+1}} 
+\underbrace{Q(s_t,a;\mathbf{w})}_{\text{Estimate of }U_t} \approx \mathbb{E}[r_{t+1}+\gamma\cdot \underbrace{Q(S_{t+1}, A_{t+1}; \mathbf{w})]}_{\text{Estimate of }U_{t+1}} 
 $$
 把求期望括号内的部分称为TD Target:
 $$
-\underbrace{Q(s_t,a;\mathbf{w})}_{\text{Prediction}} \approx  \mathbb{E}\underbrace{[r_t+\gamma\cdot Q(S_{t+1}, A_{t+1}; \mathbf{w})]}_{\text{TD Target}}
+\underbrace{Q(s_t,a;\mathbf{w})}_{\text{Prediction}} \approx  \mathbb{E}\underbrace{[r_{t+1}+\gamma\cdot Q(S_{t+1}, A_{t+1}; \mathbf{w})]}_{\text{TD Target}}
 $$
 有了Prediction和Target，就可以构建常见的损失函数更新模型参数了，令：
 $$
 \begin{aligned}
-    y_t &= r_t + \gamma \cdot Q(s_{t+1},a_{t+1};\mathbf{w_t}) \\
-        &= r_t + \gamma \cdot \underset{a}{\text{max}}Q(s_{t+1}, a; \mathbf{w_t})
+    y_t &= r_{t+1} + \gamma \cdot Q(s_{t+1},a_{t+1};\mathbf{w_t}) \\
+        &= r_{t+1} + \gamma \cdot \underset{a}{\text{max}}Q(s_{t+1}, a; \mathbf{w_t})
 \end{aligned}
 $$
 通常称Prediction和Target的差为TD error $\delta$，即$\delta_t=Q(s_{t},a_{t};\mathbf{w_t})-y_t$。
@@ -525,7 +525,7 @@ $$
 2. 预测价值：$q_t=Q(s_t,a_t;\mathbf{w_t})$
 3. 求微分：$\mathbf{d_t}=\frac{\partial Q(s_t,a_t;\mathbf{w_t})}{\partial \mathbf{w_t}} \big \vert_{w=w_t}$
 4. 环境提供下一个状态$s_{t+1}$和当前的奖励$r_t$
-5. 计算TD Target：$y_t=r_t + \gamma \cdot \underset{a}{\text{max}}Q(s_{t+1}, a; \mathbf{w_t})$
+5. 计算TD Target：$y_t=r_{t+1} + \gamma \cdot \underset{a}{\text{max}}Q(s_{t+1}, a; \mathbf{w_t})$
 6. 使用梯度下降更新参数：$\mathbf{w_{t+1}}=\mathbf{w_t}-\alpha\cdot (q_t-y_t) \mathbf{d}_t$
 
 ## Actor-Critic Method
@@ -545,7 +545,7 @@ $$
 4. 使用TD更新Critic网络参数$\mathbf{w}$
     1. 从$\pi(\cdot \vert s_{t+1}; \mathbf{\theta})$采样动作$\tilde a_{t+1}$，但是并**不执行**$\tilde a_{t+1}$
     2. 使用$Q_{\pi}(a,s;\mathbf{w})$来计算：$q_t=Q(s_t, a_t;\mathbf{w_t})$和$q_{t+1}=Q(s_{t+1}, \tilde a_{t+1}; \mathbf{w_t})$
-    3. 计算TD target: $y_t=r_t+\gamma \cdot q_{t+1}$
+    3. 计算TD target: $y_t=r_{t+1}+\gamma \cdot q_{t+1}$
     4. 损失函数：$L(\mathbf{w})=\frac{1}{2}[q_t-y_t]^2$
     5. 梯度下降更新参数：$\mathbf{w_{t+1}}=\mathbf{w_t}-\alpha \cdot \frac{\partial L(\mathbf{w_t})}{\partial \mathbf{w}} \big |_{\mathbf{w}=\mathbf{w_t}}$
 5. 使用policy gradient来更新参数$\mathbf{\theta}$
