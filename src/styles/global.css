@@ -32,4 +32,106 @@
 		max-width: 100%;
 	}
 
+	/* 链接样式 */
+	.prose a:hover {
+		text-decoration-color: hsl(var(--theme-accent));
+	}
+
+	/* Lit Review 可折叠样式 */
+	.prose {
+		counter-reset: lit-item;
+	}
+
+	/* 顶级 details 自动编号 */
+	.prose details>summary {
+		counter-increment: lit-item;
+	}
+
+	.prose details>summary::before {
+		content: counter(lit-item) ". ";
+		font-weight: bold;
+		color: var(--theme-accent);
+	}
+
+	/* details 样式 */
+	.prose details {
+		margin: 1em 0;
+		border: 1px solid hsl(var(--theme-text) / 0.1);
+		border-radius: 0.5em;
+		padding: 0.5em;
+	}
+
+	/* 嵌套 details 样式 - 更轻的边框 */
+	.prose details details {
+		border-color: hsl(var(--theme-text) / 0.05);
+		margin: 0.5em 0;
+	}
+
+	/* summary 样式 */
+	.prose summary {
+		cursor: pointer;
+		font-weight: 600;
+		list-style: none;
+		display: flex;
+		align-items: flex-start;
+		gap: 0.25em;
+		flex-wrap: wrap;
+	}
+
+	/* summary 内容容器 - 确保文字正常换行 */
+	.prose summary>* {
+		display: inline;
+	}
+
+	/* 移除默认的三角形 */
+	.prose summary::-webkit-details-marker {
+		display: none;
+	}
+
+	/* 自定义展开/收起图标 - 放在左侧 */
+	.prose summary::after {
+		content: "▶";
+		font-size: 0.75em;
+		transition: transform 0.2s;
+		flex-shrink: 0;
+		margin-top: 0.2em;
+		margin-left: 0;
+		margin-right: 0.25em;
+		order: -2;
+		color: hsl(var(--theme-accent)) !important;
+	}
+
+	/* 编号放在三角号后面 */
+	.prose details>summary::before {
+		order: -1;
+	}
+
+	.prose details[open]>summary::after {
+		transform: rotate(90deg);
+	}
+
+	/* 嵌套的 summary 不需要编号 */
+	.prose details details>summary::before {
+		content: "";
+	}
+
+	/* 嵌套的 summary 使用不同的图标 */
+	.prose details details>summary::after {
+		content: "▶";
+		font-size: 0.7em;
+		color: hsl(var(--theme-accent)) !important;
+	}
+
+	/* 日期标签样式 */
+	.prose .date-tag {
+		font-family: ui-monospace, monospace;
+		font-size: 0.85em;
+		font-weight: 600;
+		/* color: hsl(var(--theme-accent)); */
+		border: 1px solid hsl(var(--theme-accent));
+		padding: 0.1em 0.4em;
+		border-radius: 0.25em;
+		margin-right: 0.5em;
+	}
+
 }
